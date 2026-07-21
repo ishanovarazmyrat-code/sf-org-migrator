@@ -30,7 +30,7 @@ Both use the same short flow:
 **1. Install the Salesforce package in your TARGET org** (fields + classes +
 custom setting + permission set) — **one click**:
 
-> https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxVIAU
+> https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxaIAE
 
 Log into the target org, choose **Install for All Users**, then assign access:
 

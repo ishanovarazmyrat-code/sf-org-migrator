@@ -1,8 +1,8 @@
 {
   "packageDirectories": [
     {
-      "versionName": "ver 0.1",
-      "versionNumber": "0.1.0.NEXT",
+      "versionName": "ver 0.1.1",
+      "versionNumber": "0.1.1.NEXT",
       "path": "force-app",
       "default": true,
       "package": "sf-org-migrator",
@@ -14,6 +14,7 @@
   "sourceApiVersion": "64.0",
   "packageAliases": {
     "sf-org-migrator": "0HoJ6000000PAusKAG",
-    "sf-org-migrator@0.1.0-1": "04tJ6000000pGxVIAU"
+    "sf-org-migrator@0.1.0-1": "04tJ6000000pGxVIAU",
+    "sf-org-migrator@0.1.1-1": "04tJ6000000pGxaIAE"
   }
 }
