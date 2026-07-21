@@ -1,0 +1,51 @@
+{
+  "name": "sf-org-migrator",
+  "version": "1.0.1",
+  "description": "Migrate Salesforce records and files between orgs — files up to 2GB (past SFDMU's 37MB and Apex's 12MB limits), resumable, with version history. OAuth login, auto field mapping, and a local web UI.",
+  "keywords": [
+    "salesforce",
+    "migration",
+    "org-to-org",
+    "contentversion",
+    "files",
+    "sfdc",
+    "sfdx",
+    "data-migration"
+  ],
+  "homepage": "https://github.com/ishanovarazmyrat-code/sf-org-migrator#readme",
+  "bugs": {
+    "url": "https://github.com/ishanovarazmyrat-code/sf-org-migrator/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ishanovarazmyrat-code/sf-org-migrator.git",
+    "directory": "bulk-file-migration"
+  },
+  "license": "MIT",
+  "author": "ishanovarazmyrat-code",
+  "type": "commonjs",
+  "bin": {
+    "sf-org-migrator": "cli.js"
+  },
+  "main": "cli.js",
+  "scripts": {
+    "start": "node cli.js",
+    "ui": "node server.js"
+  },
+  "files": [
+    "cli.js",
+    "server.js",
+    "lib/",
+    "public/",
+    "tools/",
+    ".env.example",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "jsforce": "^3.10.19"
+  }
+}
