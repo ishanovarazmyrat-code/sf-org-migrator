@@ -1,0 +1,8 @@
+{
+  "orgName": "sf-org-migrator",
+  "edition": "Developer",
+  "features": [],
+  "settings": {
+    "lightningExperienceSettings": { "enableS1DesktopEnabled": true }
+  }
+}
