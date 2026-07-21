@@ -1,0 +1,17 @@
+# Secrets & per-user state — never commit
+**/.env
+**/.auth/
+**/migration.config.json
+
+# Runtime / generated
+**/work/
+**/node_modules/
+**/.sfdx/
+**/.mvn/
+*.log
+
+# OS / editor
+.DS_Store
+**/.DS_Store
+.vscode/
+**/.vscode/

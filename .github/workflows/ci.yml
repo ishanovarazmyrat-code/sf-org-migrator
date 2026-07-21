@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  node:
+    name: Node tool — install & syntax check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bulk-file-migration
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Syntax-check all JS
+        run: |
+          for f in cli.js server.js lib/*.js tools/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done

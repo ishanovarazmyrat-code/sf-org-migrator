@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Salesforce File Migration</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0; padding: 0; background: #f4f6fb; color: #1a202c;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0f141b; color: #e2e8f0; }
+    header { background: #1a365d !important; }
+    .card, pre { background: #161c26 !important; border-color: #2d3748 !important; }
+    button { background: #2b6cb0; }
+  }
+  header {
+    background: #2b6cb0; color: #fff; padding: 20px 28px;
+  }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; opacity: .85; font-size: 13px; }
+  main { max-width: 900px; margin: 24px auto; padding: 0 20px; }
+  .card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 20px; margin-bottom: 18px;
+  }
+  .steps { display: flex; flex-wrap: wrap; gap: 12px; }
+  .step { flex: 1 1 200px; }
+  .step h3 { margin: 0 0 4px; font-size: 14px; }
+  .step p { margin: 0 0 10px; font-size: 12px; opacity: .75; }
+  button {
+    background: #2b6cb0; color: #fff; border: 0; border-radius: 7px;
+    padding: 10px 16px; font-size: 14px; cursor: pointer; width: 100%;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: default; }
+  .log-head { display: flex; justify-content: space-between; align-items: center; }
+  .status { font-size: 13px; font-weight: 600; }
+  .status.run { color: #d69e2e; } .status.ok { color: #38a169; } .status.err { color: #e53e3e; }
+  pre {
+    background: #0d1117; color: #d1d9e0; border: 1px solid #e2e8f0;
+    border-radius: 8px; padding: 14px; font-size: 12.5px; line-height: 1.5;
+    height: 380px; overflow: auto; margin: 10px 0 0; white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Salesforce File Migration</h1>
+  <p>Migrate records and files from one org to another. Uses your Salesforce CLI logins — no passwords here.</p>
+</header>
+
+<main>
+  <div class="card">
+    <div class="steps">
+      <div class="step">
+        <h3>1. Check</h3>
+        <p>Read-only: connect and show file counts &amp; sizes.</p>
+        <button data-cmd="stats">Check orgs</button>
+      </div>
+      <div class="step">
+        <h3>2. Records</h3>
+        <p>Migrate Account, Contact, Opportunity, Case.</p>
+        <button data-cmd="records">Migrate records</button>
+      </div>
+      <div class="step">
+        <h3>3. Files</h3>
+        <p>Download &amp; upload files, then link them.</p>
+        <button data-cmd="run">Migrate files</button>
+        <label style="display:block; margin-top:8px; font-size:12px; opacity:.8;">
+          <input type="checkbox" id="allVersions" /> include version history
+        </label>
+      </div>
+      <div class="step">
+        <h3>4. Verify</h3>
+        <p>Show the final state and any failures.</p>
+        <button data-cmd="verify">Verify</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="log-head">
+      <strong>Output</strong>
+      <span class="status" id="status">idle</span>
+    </div>
+    <pre id="log">Ready. Pick a step above.
+Tip: run steps in order (Check → Records → Files → Verify).</pre>
+  </div>
+</main>
+
+<script>
+  const log = document.getElementById('log');
+  const status = document.getElementById('status');
+  const buttons = [...document.querySelectorAll('button[data-cmd]')];
+  let es = null;
+
+  function setStatus(text, cls) { status.textContent = text; status.className = 'status ' + (cls || ''); }
+  function append(line) { log.textContent += '\n' + line; log.scrollTop = log.scrollHeight; }
+
+  buttons.forEach((b) => b.addEventListener('click', () => run(b.dataset.cmd)));
+
+  function run(cmd) {
+    if (es) es.close();
+    buttons.forEach((b) => (b.disabled = true));
+    log.textContent = '$ ' + cmd;
+    setStatus('running…', 'run');
+
+    let qs = '/run?cmd=' + encodeURIComponent(cmd);
+    if (cmd === 'run' && document.getElementById('allVersions').checked) qs += '&allVersions=1';
+    es = new EventSource(qs);
+    es.addEventListener('log', (e) => append(JSON.parse(e.data)));
+    es.addEventListener('done', (e) => {
+      const code = JSON.parse(e.data).code;
+      setStatus(code === 0 ? 'done ✓' : 'failed (exit ' + code + ')', code === 0 ? 'ok' : 'err');
+      buttons.forEach((b) => (b.disabled = false));
+      es.close(); es = null;
+    });
+    es.onerror = () => {
+      setStatus('connection lost', 'err');
+      buttons.forEach((b) => (b.disabled = false));
+      if (es) { es.close(); es = null; }
+    };
+  }
+</script>
+</body>
+</html>

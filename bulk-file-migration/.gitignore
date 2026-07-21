@@ -1,0 +1,5 @@
+.env
+work/
+node_modules/
+migration.config.json
+.auth/
