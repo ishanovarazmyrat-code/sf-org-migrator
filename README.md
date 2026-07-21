@@ -27,14 +27,22 @@ and everything is resumable.
 
 Both use the same short flow:
 
-```bash
-# 1. install the package in the target org (fields + classes + setting + permission set)
-cd sfdx-package
-sf project deploy start --source-dir force-app --target-org targetOrg
-sf org assign permset --name Migration_Access --target-org targetOrg   # grants field access
-cd ..
+**1. Install the Salesforce package in your TARGET org** (fields + classes +
+custom setting + permission set) — **one click**:
 
-# 2. run the tool
+> https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxVIAU
+
+Log into the target org, choose **Install for All Users**, then assign access:
+
+```bash
+sf org assign permset --name Migration_Access --target-org targetOrg
+```
+
+*(Or deploy from source instead: `cd sfdx-package && sf project deploy start --source-dir force-app --target-org targetOrg`.)*
+
+**2. Run the tool:**
+
+```bash
 cd bulk-file-migration
 npm install
 node cli.js login source   # authorize each org via OAuth (no CLI, no password)

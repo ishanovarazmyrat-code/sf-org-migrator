@@ -9,9 +9,20 @@ installs it all into the target org in **one command**:
 - The `Migration_Sync_State__c` custom setting with its per-object fields
 - The **`Migration_Access` permission set** (field access for the above)
 
-## Deploy
+## Install
 
-Log in to the target org once, then deploy and assign the permission set:
+**Easiest — one-click unlocked package** (installs into any org, incl. production):
+
+> https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxVIAU
+
+Log into the target org, choose **Install for All Users**, then assign the
+permission set:
+
+```bash
+sf org assign permset --name Migration_Access --target-org targetOrg
+```
+
+**Or deploy from source:**
 
 ```bash
 sf org login web --alias targetOrg
@@ -20,7 +31,7 @@ sf project deploy start --source-dir force-app --target-org targetOrg
 sf org assign permset --name Migration_Access --target-org targetOrg
 ```
 
-That's it — no manual field creation, no manual custom setting.
+Either way — no manual field creation, no manual custom setting.
 
 > **Why the permission set:** a field deployed via metadata has no
 > field-level security by default, so it stays invisible (SOQL says "No such

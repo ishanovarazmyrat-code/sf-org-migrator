@@ -52,9 +52,16 @@ adoption), then layer a hosted/paid service on top. Leave AppExchange for last
    **`sf-org-migrator` 1.0.0** (npmjs.com/package/sf-org-migrator, by `araz_m`).
    `npm install -g sf-org-migrator` gives the `sf-org-migrator` command; state
    (work/, .auth/, config) is cwd-relative. CHANGELOG.md added.
-6. **Turn the SFDX metadata into an unlocked package** — versioned, one
-   "Install URL" instead of raw metadata. (Needs a Dev Hub.)
-7. **Versioning / changelog** — semver + CHANGELOG.md.
+6. ~~**Turn the SFDX metadata into an unlocked package**~~ ✅ **DONE (2026-07-21).**
+   Unlocked package `sf-org-migrator` v0.1.0.1 built on the `trailhead` Dev Hub,
+   tests passed (≥75% coverage), **promoted to Released** (installs into
+   production too). One-click install URL:
+   `https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxVIAU`
+7. ~~**Versioning / changelog**~~ ✅ semver + CHANGELOG.md in place.
+
+**Phase 1 complete.** The product is publicly installable both ways: the CLI
+via `npm install -g sf-org-migrator`, and the Salesforce side via the package
+install URL.
 
 ## Phase 2 — Polish & adoption 🟡
 
