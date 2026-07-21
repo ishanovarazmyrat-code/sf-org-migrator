@@ -13,7 +13,7 @@ installs it all into the target org in **one command**:
 
 **Easiest — one-click unlocked package** (installs into any org, incl. production):
 
-> https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxVIAU
+> https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxaIAE
 
 Log into the target org, choose **Install for All Users**, then assign the
 permission set:
