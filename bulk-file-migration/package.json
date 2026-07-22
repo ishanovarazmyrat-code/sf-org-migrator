@@ -1,6 +1,6 @@
 {
   "name": "sf-org-migrator",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Migrate Salesforce records and files between orgs — files up to 2GB, resumable, with version history. OAuth login, auto field mapping, and a local web UI.",
   "keywords": [
     "salesforce",
