@@ -18,9 +18,8 @@ First public release.
 - Migrate **records** (Account, Contact, Opportunity, Case, and configurable
   custom objects) between orgs, upserting on `Legacy_*_Id__c` external Ids with
   lookup/master-detail parent remapping.
-- Migrate **files** up to **2 GB each** (multipart REST) — past SFDMU's 37 MB
-  and Apex's 12 MB limits — streamed to disk, **resumable**, with full version
-  history.
+- Migrate **files** up to **2 GB each** (multipart REST) — streamed to disk,
+  **resumable**, with full version history.
 - **Automatic field mapping**: fields discovered from both orgs; formulas,
   auto-numbers, system fields, and unmapped lookups excluded; record types
   mapped by DeveloperName; State/Country picklists handled via ISO codes.

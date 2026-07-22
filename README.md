@@ -17,8 +17,7 @@ The commands below use `node cli.js` — with the global install, replace that w
 
 Out of the box it handles **Account, Contact, Opportunity, and Case**; custom
 objects are supported with a little config (see *Custom objects* below). Files
-go up to **2 GB each** — well past the Apex (12 MB) and SFDMU (37 MB) limits —
-and everything is resumable.
+go up to **2 GB each**, and everything is resumable.
 
 ## Pick your path
 

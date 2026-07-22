@@ -1,9 +1,9 @@
 # Bulk File & Record Migration (org → org)
 
 Migrates **records and files** between two Salesforce orgs. Files stream to
-disk and upload via multipart (up to **2 GB/file**), well past the Apex 12 MB
-and SFDMU 37 MB ceilings. Records upsert on a `Legacy_*_Id__c` external Id
-with lookup/master-detail remapping. Everything is resumable.
+disk and upload via multipart (up to **2 GB/file**). Records upsert on a
+`Legacy_*_Id__c` external Id with lookup/master-detail remapping. Everything
+is resumable.
 
 Authentication uses the **Salesforce CLI** — no passwords stored. (A
 username/password `.env` still works as a fallback.)

@@ -69,10 +69,10 @@ install URL.
    setup wizard.
 9. **Robustness at scale** — large-volume tests, partial-failure reports,
    retry dashboard.
-10. **Docs site** — hosted docs (GitHub Pages / Docusaurus), demo video, and a
-    comparison table vs SFDMU / Gearset / Data Loader.
-11. **Landing page** — the pitch ("2 GB/file, resumable, org-to-org"),
-    download / CTA.
+10. **Docs site** — hosted docs on GitHub Pages, capabilities-focused
+    (no competitor comparisons, no pricing). *Live:*
+    https://ishanovarazmyrat-code.github.io/sf-org-migrator/ — optional
+    follow-ups: demo video, expanded guides.
 
 ## Phase 3 — Monetization 🔴
 
