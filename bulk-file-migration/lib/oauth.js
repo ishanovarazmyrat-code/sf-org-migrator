@@ -107,12 +107,15 @@ function loadAuth(prefix) {
   }
 }
 
-/**
- * Uses the stored refresh token for `prefix` to get a fresh access token.
- * Handles refresh-token rotation: if Salesforce issues a new refresh token
- * (External Client Apps rotate by default), we save it so the next call works.
- */
-async function refresh(prefix) {
+// One in-flight refresh per prefix. External Client Apps ROTATE the refresh
+// token on use, so two concurrent refreshes that both read the same stored
+// token race: the first rotates it, invalidating the token the second is still
+// using ("expired access/refresh token"). Sharing a single promise per prefix
+// makes concurrent callers (e.g. two UI requests, or SOURCE+TARGET at once)
+// await the same refresh instead of racing.
+const inFlight = {};
+
+async function doRefresh(prefix) {
   const auth = loadAuth(prefix);
   if (!auth || !auth.refreshToken) {
     throw new Error(`No stored OAuth for ${prefix}. Run:  node cli.js login`);
@@ -128,6 +131,20 @@ async function refresh(prefix) {
     saveAuth(prefix, auth);
   }
   return { instanceUrl: res.instance_url, accessToken: res.access_token };
+}
+
+/**
+ * Uses the stored refresh token for `prefix` to get a fresh access token.
+ * Handles refresh-token rotation and de-duplicates concurrent refreshes so
+ * rotation never invalidates an in-flight sibling call.
+ */
+function refresh(prefix) {
+  if (inFlight[prefix]) return inFlight[prefix];
+  const p = doRefresh(prefix).finally(() => {
+    delete inFlight[prefix];
+  });
+  inFlight[prefix] = p;
+  return p;
 }
 
 module.exports = { deviceLogin, saveAuth, loadAuth, refresh, AUTH_DIR };
