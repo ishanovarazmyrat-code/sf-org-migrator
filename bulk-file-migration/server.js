@@ -1,5 +1,5 @@
 /**
- * Local web UI for the migration tool. No external dependencies.
+ * Web UI for the migration tool. No external dependencies.
  *
  *   node server.js        then open http://localhost:4599
  *
@@ -11,22 +11,85 @@
  *   Run             - the same CLI phases (stats / records / run / verify) as
  *                     child processes, streamed live with a progress bar + ETA.
  *
- * Everything binds to 127.0.0.1 only: the UI can trigger real migrations, so
- * it must never be reachable from the network.
+ * TWO MODES:
+ *   Local (default)  - binds 127.0.0.1 only, no login. The UI can trigger real
+ *                      migrations, so locally it must never be network-reachable.
+ *   Hosted           - set UI_ACCESS_KEY to run it behind a URL (e.g. in a
+ *                      container). It then binds 0.0.0.0 AND requires that key
+ *                      on a login screen before any route works, so an exposed
+ *                      instance is not an open migration trigger.
  */
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const PORT = process.env.UI_PORT || 4599;
+// UI_PORT for local use; PORT is what most hosts (Render/Railway/Heroku) inject.
+const PORT = process.env.UI_PORT || process.env.PORT || 4599;
 const CLI = path.join(__dirname, 'cli.js');
 const CONFIG_PATH = path.join(process.cwd(), 'migration.config.json');
+
+// Hosted mode: a non-empty UI_ACCESS_KEY turns on the login gate and lets the
+// server bind to all interfaces. Without it, the old localhost-only behaviour.
+const ACCESS_KEY = process.env.UI_ACCESS_KEY || '';
+const HOSTED = ACCESS_KEY.length > 0;
+const BIND_HOST = process.env.UI_HOST || (HOSTED ? '0.0.0.0' : '127.0.0.1');
+const sessions = new Set(); // valid session ids (in-memory; cleared on restart)
 
 // Only these commands can be triggered from the UI (no destructive/interactive ones).
 const ALLOWED = new Set(['stats', 'records', 'run', 'verify']);
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+
+/* ------------------------------------------------------------------ */
+/* auth gate (hosted mode only)                                        */
+/* ------------------------------------------------------------------ */
+function parseCookies(req) {
+  const out = {};
+  const raw = req.headers.cookie || '';
+  raw.split(';').forEach((p) => {
+    const i = p.indexOf('=');
+    if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim());
+  });
+  return out;
+}
+
+function isAuthed(req) {
+  if (!HOSTED) return true; // local mode: no gate
+  const sid = parseCookies(req).sid;
+  return !!sid && sessions.has(sid);
+}
+
+// Constant-time compare so the key can't be guessed by timing.
+function keyMatches(candidate) {
+  const a = Buffer.from(String(candidate));
+  const b = Buffer.from(ACCESS_KEY);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+const LOGIN_PAGE = `<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — Org Migration</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; display: grid; place-items: center;
+    min-height: 100vh; margin: 0; background: #0f141b; color: #e2e8f0; }
+  form { background: #161c26; border: 1px solid #2d3748; border-radius: 12px; padding: 28px; width: 320px; }
+  h1 { font-size: 18px; margin: 0 0 4px; } p { font-size: 13px; color: #94a3b8; margin: 0 0 18px; }
+  input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #2d3748;
+    background: #0d1117; color: #e2e8f0; font-size: 14px; }
+  button { width: 100%; margin-top: 12px; padding: 10px; border: 0; border-radius: 8px; background: #2b6cb0;
+    color: #fff; font-size: 14px; cursor: pointer; }
+  .err { color: #fc8181; font-size: 13px; margin-top: 10px; min-height: 16px; }
+</style>
+<form method="POST" action="/login">
+  <h1>🔄 Org-to-Org Migration</h1>
+  <p>Enter the access key to continue.</p>
+  <input type="password" name="key" placeholder="Access key" autofocus autocomplete="current-password" />
+  <button type="submit">Sign in</button>
+  <div class="err">__ERR__</div>
+</form>`;
 
 /* ------------------------------------------------------------------ */
 /* config helpers                                                      */
@@ -327,9 +390,61 @@ function runCommand(req, res, url) {
 }
 
 /* ------------------------------------------------------------------ */
+/* /login (hosted mode) - exchange the access key for a session cookie */
+/* ------------------------------------------------------------------ */
+function handleLogin(res, form) {
+  if (keyMatches(form && form.key)) {
+    const sid = crypto.randomBytes(24).toString('hex');
+    sessions.add(sid);
+    res.writeHead(302, {
+      'Set-Cookie': `sid=${sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`,
+      Location: '/',
+    });
+    return res.end();
+  }
+  res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(LOGIN_PAGE.replace('__ERR__', 'Wrong access key.'));
+}
+
+// readBody handles JSON; the login form posts urlencoded, so parse that too.
+function readFormOrJson(req) {
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', (c) => { data += c; if (data.length > 1e5) req.destroy(); });
+    req.on('end', () => {
+      const ct = req.headers['content-type'] || '';
+      if (ct.includes('application/json')) {
+        try { return resolve(JSON.parse(data || '{}')); } catch { return resolve({}); }
+      }
+      const out = {};
+      new URLSearchParams(data).forEach((v, k) => (out[k] = v));
+      resolve(out);
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
+/* ------------------------------------------------------------------ */
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   try {
+    // Hosted-mode login gate. /login is the only route reachable unauthenticated.
+    if (url.pathname === '/login') {
+      if (req.method === 'POST') {
+        const form = await readFormOrJson(req);
+        return handleLogin(res, form);
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(LOGIN_PAGE.replace('__ERR__', ''));
+    }
+    if (!isAuthed(req)) {
+      if (url.pathname === '/' ) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(LOGIN_PAGE.replace('__ERR__', ''));
+      }
+      return sendJson(res, 401, { error: 'unauthorized' });
+    }
+
     if (url.pathname === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(PAGE);
@@ -352,8 +467,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Bind to localhost only — the UI can trigger migrations, so it must never
-// be reachable from the network.
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`\n  Migration UI running at  http://localhost:${PORT}  (localhost only)\n`);
+server.listen(PORT, BIND_HOST, () => {
+  if (HOSTED) {
+    console.log(`\n  Migration UI (hosted) on  http://${BIND_HOST}:${PORT}  — login required (UI_ACCESS_KEY set)\n`);
+  } else {
+    console.log(`\n  Migration UI running at  http://localhost:${PORT}  (localhost only)\n`);
+  }
 });

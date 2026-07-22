@@ -1,0 +1,28 @@
+# One-click deploy of the migration web UI to Render (https://render.com).
+# Render reads this file at the repo root. Deploy: New → Blueprint → this repo.
+#
+# After deploy, set SOURCE_AUTH_URL / TARGET_AUTH_URL (from `sf org display
+# --verbose` on a machine where you're logged in, the "Sfdx Auth Url" value).
+# The access key is generated for you — find it under the service's Environment.
+services:
+  - type: web
+    name: sf-org-migrator-ui
+    runtime: docker
+    dockerfilePath: bulk-file-migration/Dockerfile
+    dockerContext: bulk-file-migration
+    envVars:
+      # Login key for the UI — auto-generated, view it in the dashboard.
+      - key: UI_ACCESS_KEY
+        generateValue: true
+      # Org auth (set these yourself in the dashboard; never committed).
+      - key: SOURCE_AUTH_URL
+        sync: false
+      - key: TARGET_AUTH_URL
+        sync: false
+    # Persistent disk keeps work/ (resumable state + downloaded files) across
+    # restarts. Needs a paid instance; remove this block for a free, ephemeral
+    # deploy (migrations still work, but a restart loses in-progress state).
+    disk:
+      name: migration-work
+      mountPath: /app/work
+      sizeGB: 10

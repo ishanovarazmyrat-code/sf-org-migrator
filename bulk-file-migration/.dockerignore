@@ -1,0 +1,9 @@
+# Never bake secrets or local state into the image.
+node_modules
+.auth
+.env
+migration.config.json
+work
+npm-debug.log
+Dockerfile
+.dockerignore
