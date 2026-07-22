@@ -77,6 +77,12 @@ The tool tries them in this order: `.auth/` (OAuth) → `*_AUTH_URL` → CLI ali
 - Needs **Node.js 22+** (older versions crash on a jsforce dependency).
 - Runs are logged to `work/logs/`. `work/` is the resumable state — delete it
   for a clean restart.
+- **Partial failures are reported, not just counted.** Records, files, or links
+  that fail (or are skipped because a parent isn't there yet) are written to a
+  CSV under `work/errors/` with the source Id and reason. Fix the cause and
+  re-run — records upsert is idempotent, files resume from the manifest.
+- Deterministic errors (bad field, validation, permissions) fail fast; only
+  transient errors (network, rate limit, server 5xx, session expiry) are retried.
 - **Target org File Storage must be ≥ your file volume** (Setup → Storage
   Usage). Files over 2 GB can't go through the API.
 - `.env`, `work/`, and `migration.config.json` are gitignored.

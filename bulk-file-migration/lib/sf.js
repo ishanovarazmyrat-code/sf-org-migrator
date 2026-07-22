@@ -177,10 +177,44 @@ function isSessionError(err) {
   );
 }
 
+// Salesforce error codes that are DETERMINISTIC — the same request will fail
+// the same way every time (bad field, malformed SOQL, validation rule, missing
+// permission...). Retrying these just wastes minutes of backoff at scale, so we
+// fail fast instead. Anything NOT listed here is treated as possibly transient
+// and still retried, so we never lose resilience against unknown errors.
+const DETERMINISTIC_CODES = new Set([
+  'INVALID_FIELD', 'INVALID_TYPE', 'MALFORMED_QUERY', 'INVALID_FIELD_FOR_INSERT_UPDATE',
+  'REQUIRED_FIELD_MISSING', 'FIELD_CUSTOM_VALIDATION_EXCEPTION', 'FIELD_INTEGRITY_EXCEPTION',
+  'STRING_TOO_LONG', 'INVALID_EMAIL_ADDRESS', 'INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST',
+  'DUPLICATE_VALUE', 'INSUFFICIENT_ACCESS_ON_CROSS_REFERENCE_ENTITY', 'INSUFFICIENT_ACCESS',
+  'INVALID_CROSS_REFERENCE_KEY', 'ENTITY_IS_DELETED', 'CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY',
+  'NOT_FOUND', 'METHOD_NOT_ALLOWED',
+]);
+
+/** True when the error is worth retrying (network blip, server 5xx, rate
+ *  limit, row lock, session expiry). Unknown errors default to retryable. */
+function isTransient(err) {
+  if (!err) return false;
+  if (isSessionError(err)) return true;
+  const code = err.errorCode || err.code;
+  if (code && DETERMINISTIC_CODES.has(code)) return false;
+  // Node network errors (transient by nature).
+  if (['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE'].includes(code)) return true;
+  const status = err.statusCode;
+  if (typeof status === 'number') {
+    if (status === 429 || status >= 500) return true; // rate limited / server error
+    if (status >= 400 && status < 500) return false; // other client errors are deterministic
+  }
+  const msg = String((err && err.message) || err);
+  if (/REQUEST_LIMIT_EXCEEDED|UNABLE_TO_LOCK_ROW|QUERY_TIMEOUT|Server (Unavailable|busy)|Too Many Requests|socket hang up|network|timeout/i.test(msg)) return true;
+  return true; // unknown -> assume transient, keep retrying (conservative)
+}
+
 /**
  * Runs fn with retry + exponential backoff. A 10GB run takes hours, so the
  * session WILL eventually expire mid-run - on session errors we re-login
- * against the same org and retry.
+ * against the same org and retry. Deterministic errors (bad field, validation,
+ * permissions) fail fast instead of burning the full backoff budget.
  */
 async function withRetry(conn, fn, { tries = 4, label = '' } = {}) {
   let lastErr;
@@ -192,6 +226,9 @@ async function withRetry(conn, fn, { tries = 4, label = '' } = {}) {
       if (isSessionError(err)) {
         console.warn(`  [${conn.$prefix}] Session expired - refreshing...`);
         await conn.$reauth();
+      } else if (!isTransient(err)) {
+        // No point retrying — the same request will fail the same way.
+        break;
       }
       if (attempt === tries) break;
       const delay = Math.min(30000, 1000 * 2 ** (attempt - 1));
@@ -360,6 +397,7 @@ function createLimiter(concurrency) {
 module.exports = {
   connect,
   withRetry,
+  isTransient,
   queryAllRecords,
   downloadVersionToFile,
   uploadVersionMultipart,

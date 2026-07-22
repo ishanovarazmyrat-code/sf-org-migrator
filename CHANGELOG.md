@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- **Partial-failure reports.** Every phase (records, download, upload, link)
+  now writes failed/skipped items to `work/errors/<phase>-<timestamp>.csv`
+  (source Id, target Id, reason) instead of only counting them — so at scale
+  you can see exactly what failed and why, fix it, and re-run.
+- **Smarter retries.** Transient errors (network, rate limit, server 5xx,
+  session expiry, row lock) are retried with backoff; deterministic errors
+  (bad field, validation rule, permissions, malformed query) now fail fast
+  instead of burning the full retry budget.
+
 ## [1.1.0] — 2026-07-22
 
 - **Richer local web UI** (`sf-org-migrator ui`): a Setup tab that checks both
