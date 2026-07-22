@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.5.0] — 2026-07-22
+
+- **Run the web UI behind a URL (hosted mode).** Set `UI_ACCESS_KEY` and the UI
+  binds all interfaces behind a login gate (session cookie, constant-time key
+  check); without it, the old localhost-only behaviour is unchanged. Ships a
+  `Dockerfile`, `render.yaml` one-click deploy, and `HOSTING.md`. Single-tenant:
+  one instance, one org pair — your tokens and data stay in your own instance.
+- **Connect an org from the browser.** The Setup tab can authorize each org via
+  the OAuth device flow — paste the Consumer Key, click Connect, approve the
+  code at Salesforce. No shell or auth URL needed.
+
 ## [1.4.0] — 2026-07-22
 
 - **Required fields are shown in the web UI.** The Objects & Fields tab labels
