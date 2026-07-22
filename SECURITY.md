@@ -30,6 +30,12 @@
 - `npm run ui` binds to **127.0.0.1 only** — it is not reachable from the
   network. It can only run a fixed allowlist of commands
   (`stats`, `records`, `run`, `verify`); no arbitrary input reaches a shell.
+- **Hosted mode** (set `UI_ACCESS_KEY`) is opt-in for running the UI behind a
+  URL. It then binds all interfaces but **requires that key on a login screen**
+  before any route works (session cookie is HttpOnly + SameSite=Strict; the key
+  is compared in constant time). Use a long random key and always serve over
+  HTTPS. It stays single-tenant — one instance, one pair of orgs. See
+  [HOSTING.md](HOSTING.md).
 
 ## Recommendations for running a real migration
 
