@@ -65,8 +65,11 @@ install URL.
 
 ## Phase 2 — Polish & adoption 🟡
 
-8. **Richer UI** — object selection, field-mapping screen, progress bar / ETA,
-   setup wizard.
+8. ~~**Richer UI**~~ ✅ **DONE (2026-07-22).** Web UI (`sf-org-migrator ui`,
+   shipped in npm 1.1.0) now has a Setup tab (live connection check), an
+   Objects & Fields tab (reads both orgs, pick objects + fields, saved to
+   `migration.config.json`), and a Run tab with a live log, progress bar and
+   ETA. Localhost-only.
 9. **Robustness at scale** — large-volume tests, partial-failure reports,
    retry dashboard.
 10. **Docs site** — hosted docs on GitHub Pages, capabilities-focused
