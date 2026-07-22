@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.6.0] — 2026-07-22
+
+- **The web UI is now a modern app, not a terminal.** Full redesign: gradient
+  app shell with live source/target status, a guided step wizard that earns
+  checkmarks and offers "Continue →" as you finish each step, phase status
+  cards with progress bars and live timers, and results parsed into friendly
+  summaries (per-object record counts, file/link/byte tiles) with success and
+  warning banners plus toast notifications. The raw output lives in a
+  collapsible "Technical log" (auto-opens on failure).
+- **One-click full migration.** A "Run full migration" button chains
+  Records → Files → Verify automatically.
+- **Objects & Fields quality-of-life.** Field search box per object, a live
+  selected-fields count, Enter-to-add objects, and friendlier empty states.
+
 ## [1.5.0] — 2026-07-22
 
 - **Run the web UI behind a URL (hosted mode).** Set `UI_ACCESS_KEY` and the UI
