@@ -76,6 +76,13 @@
   .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 14px; }
   .fields label { font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
   .fields.disabled { opacity: .45; pointer-events: none; }
+  .reqmark { font-size: 10px; font-weight: 700; color: var(--accent); letter-spacing: .03em; margin-left: 3px; }
+  .req-warn {
+    display: none; margin-top: 10px; font-size: 12.5px; color: #92400e;
+    background: #fef3c7; border-radius: 7px; padding: 8px 11px;
+  }
+  .req-warn.show { display: block; }
+  @media (prefers-color-scheme: dark) { .req-warn { color: #fde68a; background: #422006; } }
   .savebar { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
   .savemsg { font-size: 13px; color: var(--muted); }
   .addrow { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; flex-wrap: wrap; }
@@ -346,6 +353,7 @@ function renderObjects() {
     }
     const auto = o.selected === 'auto';
     const selectedSet = new Set(auto ? o.available : o.selected);
+    const reqSet = new Set(o.required || []);
 
     const missingXid = o.externalIdOnTarget === false;
     const head = document.createElement('div');
@@ -377,11 +385,14 @@ function renderObjects() {
         '<label><input type="radio" name="' + modeName + '" value="pick" ' + (auto ? '' : 'checked') + '> Choose fields</label>' +
       '</div>' +
       '<div class="fields ' + (auto ? 'disabled' : '') + '">' +
-        o.available.map((f) =>
-          '<label><input type="checkbox" class="field" value="' + f + '" ' +
-          (selectedSet.has(f) ? 'checked' : '') + '>' + f + '</label>'
-        ).join('') +
-      '</div>';
+        o.available.map((f) => {
+          const req = reqSet.has(f);
+          return '<label' + (req ? ' class="req"' : '') + '><input type="checkbox" class="field" value="' + f + '"' +
+            (req ? ' data-req="1"' : '') + (selectedSet.has(f) ? ' checked' : '') + '>' + f +
+            (req ? '<span class="reqmark">required</span>' : '') + '</label>';
+        }).join('') +
+      '</div>' +
+      '<div class="req-warn"></div>';
 
     // toggle body open/closed (but not when clicking the enable checkbox)
     head.addEventListener('click', (e) => {
@@ -393,17 +404,40 @@ function renderObjects() {
       wrap.style.opacity = e.target.checked ? '1' : '.5';
     });
     if (!o.enabled) wrap.style.opacity = '.5';
-    // auto vs pick toggles the field grid
+    // auto vs pick toggles the field grid; auto always includes required fields.
     body.querySelectorAll('input[name="' + modeName + '"]').forEach((radio) =>
       radio.addEventListener('change', () => {
         body.querySelector('.fields').classList.toggle('disabled', radio.value === 'auto' && radio.checked);
+        updateReqWarn(body);
       })
     );
+    // warn live when a required-on-target field is unchecked
+    body.querySelector('.fields').addEventListener('change', (e) => {
+      if (e.target.classList.contains('field')) updateReqWarn(body);
+    });
 
     wrap.appendChild(head);
     wrap.appendChild(body);
     objList.appendChild(wrap);
   });
+}
+
+// Shows a warning inside an object body listing any required-on-target field
+// the user has unchecked (in "Choose fields" mode). In "All copyable" mode
+// every required field is included, so the warning is hidden.
+function updateReqWarn(body) {
+  const warn = body.querySelector('.req-warn');
+  if (!warn) return;
+  const autoOn = body.querySelector('input[value="auto"]').checked;
+  const missing = autoOn ? [] :
+    [...body.querySelectorAll('.field[data-req="1"]')].filter((c) => !c.checked).map((c) => c.value);
+  if (missing.length) {
+    warn.textContent = '⚠ ' + missing.length + ' required field(s) unchecked: ' + missing.join(', ') +
+      ' — records will fail to insert without them.';
+    warn.classList.add('show');
+  } else {
+    warn.classList.remove('show');
+  }
 }
 
 document.getElementById('saveObjects').addEventListener('click', async () => {

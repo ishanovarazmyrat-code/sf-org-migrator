@@ -137,19 +137,20 @@ async function buildFieldPlan(source, target, objCfg, log) {
     }
   }
 
-  // Heads-up for required target fields we won't be filling.
+  // Required target fields (createable, not nillable, no default). Callers use
+  // this to warn before dropping one; the migrated subset is reported here too.
+  const required = [];
   for (const [fname, t] of tgtFields) {
-    if (
-      t.createable && !t.nillable && !t.defaultedOnCreate &&
-      fname !== externalId && !fields.includes(fname) &&
-      !parentFields.has(fname) && fname !== 'Id'
-    ) {
-      warnings.push(`target requires ${fname} but it is not in the migrated set — inserts may fail`);
+    if (t.createable && !t.nillable && !t.defaultedOnCreate && fname !== 'Id') {
+      if (fields.includes(fname)) required.push(fname);
+      else if (fname !== externalId && !parentFields.has(fname)) {
+        warnings.push(`target requires ${fname} but it is not in the migrated set — inserts may fail`);
+      }
     }
   }
 
   for (const w of warnings) log(`  (i) ${name}: ${w}`);
-  return { fields, recordTypeMap };
+  return { fields, recordTypeMap, required };
 }
 
 /** target sourceId -> targetId map for one object, from its external Id field. */
