@@ -3,128 +3,450 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Salesforce File Migration</title>
+<title>Salesforce Org Migration</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f6fb; --fg: #1a202c; --muted: #64748b;
+    --card: #fff; --border: #e2e8f0; --accent: #2b6cb0; --accent-fg: #fff;
+    --head: #2b6cb0; --ok: #38a169; --err: #e53e3e; --warn: #d69e2e;
+    --track: #e2e8f0; --logbg: #0d1117; --logfg: #d1d9e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f141b; --fg: #e2e8f0; --muted: #94a3b8;
+      --card: #161c26; --border: #2d3748; --accent: #2b6cb0;
+      --head: #1a365d; --track: #2d3748; --logbg: #0b0f14;
+    }
+  }
   * { box-sizing: border-box; }
   body {
     font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    margin: 0; padding: 0; background: #f4f6fb; color: #1a202c;
+    margin: 0; background: var(--bg); color: var(--fg);
   }
-  @media (prefers-color-scheme: dark) {
-    body { background: #0f141b; color: #e2e8f0; }
-    header { background: #1a365d !important; }
-    .card, pre { background: #161c26 !important; border-color: #2d3748 !important; }
-    button { background: #2b6cb0; }
-  }
-  header {
-    background: #2b6cb0; color: #fff; padding: 20px 28px;
-  }
+  header { background: var(--head); color: #fff; padding: 18px 28px; }
   header h1 { margin: 0; font-size: 20px; }
   header p { margin: 4px 0 0; opacity: .85; font-size: 13px; }
-  main { max-width: 900px; margin: 24px auto; padding: 0 20px; }
+  main { max-width: 940px; margin: 0 auto; padding: 20px; }
+
+  nav.tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+  nav.tabs button {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer;
+  }
+  nav.tabs button.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+
   .card {
-    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
     padding: 20px; margin-bottom: 18px;
   }
-  .steps { display: flex; flex-wrap: wrap; gap: 12px; }
-  .step { flex: 1 1 200px; }
-  .step h3 { margin: 0 0 4px; font-size: 14px; }
-  .step p { margin: 0 0 10px; font-size: 12px; opacity: .75; }
-  button {
-    background: #2b6cb0; color: #fff; border: 0; border-radius: 7px;
-    padding: 10px 16px; font-size: 14px; cursor: pointer; width: 100%;
+  .card h2 { margin: 0 0 4px; font-size: 16px; }
+  .card .hint { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+
+  button.primary {
+    background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 7px;
+    padding: 10px 16px; font-size: 14px; cursor: pointer;
   }
-  button:hover { filter: brightness(1.08); }
-  button:disabled { opacity: .5; cursor: default; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.ghost {
+    background: transparent; color: var(--accent); border: 1px solid var(--border);
+    border-radius: 7px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+  }
+
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .conn { flex: 1 1 260px; border: 1px solid var(--border); border-radius: 9px; padding: 14px; }
+  .conn .label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .conn .state { font-size: 15px; font-weight: 600; margin: 6px 0 2px; }
+  .conn .url { font-size: 12px; color: var(--muted); word-break: break-all; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot.ok { background: var(--ok); } .dot.err { background: var(--err); } .dot.idle { background: var(--muted); }
+
+  .obj { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 12px; overflow: hidden; }
+  .obj-head {
+    display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+    cursor: pointer; user-select: none;
+  }
+  .obj-head .name { font-weight: 600; font-size: 14px; }
+  .obj-head .count { font-size: 12px; color: var(--muted); margin-left: auto; }
+  .obj-body { padding: 0 14px 14px 38px; display: none; }
+  .obj-body.open { display: block; }
+  .mode { display: flex; gap: 16px; margin: 4px 0 10px; font-size: 13px; }
+  .mode label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 14px; }
+  .fields label { font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
+  .fields.disabled { opacity: .45; pointer-events: none; }
+  .savebar { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+  .savemsg { font-size: 13px; color: var(--muted); }
+
+  .steps { display: flex; flex-wrap: wrap; gap: 12px; }
+  .step { flex: 1 1 190px; }
+  .step h3 { margin: 0 0 4px; font-size: 14px; }
+  .step p { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+  .step button { width: 100%; }
+
+  .progress-wrap { margin: 8px 0 2px; }
+  .progress-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .track { height: 10px; background: var(--track); border-radius: 6px; overflow: hidden; }
+  .bar { height: 100%; width: 0; background: var(--accent); transition: width .25s ease; }
+  .bar.indet { width: 35% !important; animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
   .log-head { display: flex; justify-content: space-between; align-items: center; }
   .status { font-size: 13px; font-weight: 600; }
-  .status.run { color: #d69e2e; } .status.ok { color: #38a169; } .status.err { color: #e53e3e; }
+  .status.run { color: var(--warn); } .status.ok { color: var(--ok); } .status.err { color: var(--err); }
   pre {
-    background: #0d1117; color: #d1d9e0; border: 1px solid #e2e8f0;
+    background: var(--logbg); color: var(--logfg); border: 1px solid var(--border);
     border-radius: 8px; padding: 14px; font-size: 12.5px; line-height: 1.5;
-    height: 380px; overflow: auto; margin: 10px 0 0; white-space: pre-wrap;
+    height: 340px; overflow: auto; margin: 10px 0 0; white-space: pre-wrap;
   }
+  .spinner {
+    display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Salesforce File Migration</h1>
-  <p>Migrate records and files from one org to another. Uses your Salesforce CLI logins — no passwords here.</p>
+  <h1>Salesforce Org Migration</h1>
+  <p>Migrate records and files from one org to another. Uses your saved logins — no passwords here.</p>
 </header>
 
 <main>
-  <div class="card">
-    <div class="steps">
-      <div class="step">
-        <h3>1. Check</h3>
-        <p>Read-only: connect and show file counts &amp; sizes.</p>
-        <button data-cmd="stats">Check orgs</button>
-      </div>
-      <div class="step">
-        <h3>2. Records</h3>
-        <p>Migrate Account, Contact, Opportunity, Case.</p>
-        <button data-cmd="records">Migrate records</button>
-      </div>
-      <div class="step">
-        <h3>3. Files</h3>
-        <p>Download &amp; upload files, then link them.</p>
-        <button data-cmd="run">Migrate files</button>
-        <label style="display:block; margin-top:8px; font-size:12px; opacity:.8;">
-          <input type="checkbox" id="allVersions" /> include version history
-        </label>
-      </div>
-      <div class="step">
-        <h3>4. Verify</h3>
-        <p>Show the final state and any failures.</p>
-        <button data-cmd="verify">Verify</button>
-      </div>
-    </div>
-  </div>
+  <nav class="tabs">
+    <button data-tab="setup" class="active">1 · Setup</button>
+    <button data-tab="objects">2 · Objects &amp; Fields</button>
+    <button data-tab="run">3 · Run</button>
+  </nav>
 
-  <div class="card">
-    <div class="log-head">
-      <strong>Output</strong>
-      <span class="status" id="status">idle</span>
+  <!-- ============ SETUP ============ -->
+  <section data-panel="setup">
+    <div class="card">
+      <h2>Connections</h2>
+      <p class="hint">Check that both orgs are reachable before migrating.</p>
+      <div class="row" id="conns">
+        <div class="conn"><div class="label">Source (from)</div><div class="state"><span class="dot idle"></span>not checked</div><div class="url"></div></div>
+        <div class="conn"><div class="label">Target (to)</div><div class="state"><span class="dot idle"></span>not checked</div><div class="url"></div></div>
+      </div>
+      <div style="margin-top:14px;">
+        <button class="primary" id="checkConns">Check connections</button>
+      </div>
     </div>
-    <pre id="log">Ready. Pick a step above.
+  </section>
+
+  <!-- ============ OBJECTS & FIELDS ============ -->
+  <section data-panel="objects" class="hidden">
+    <div class="card">
+      <h2>Objects &amp; fields to migrate</h2>
+      <p class="hint">Loaded from both orgs — only fields that exist and are writable in both are shown. Your choice is saved to <code>migration.config.json</code> and used by the records migration.</p>
+      <button class="primary" id="loadObjects">Load objects</button>
+      <div id="objList" style="margin-top:16px;"></div>
+      <div class="savebar" id="saveBar" class="hidden">
+        <button class="primary" id="saveObjects">Save selection</button>
+        <span class="savemsg" id="saveMsg"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RUN ============ -->
+  <section data-panel="run" class="hidden">
+    <div class="card">
+      <h2>Run the migration</h2>
+      <p class="hint">Run steps in order. Each step is resumable — re-run to retry failures.</p>
+      <div class="steps">
+        <div class="step">
+          <h3>1. Check</h3>
+          <p>Read-only: file counts &amp; sizes.</p>
+          <button class="primary" data-cmd="stats">Check orgs</button>
+        </div>
+        <div class="step">
+          <h3>2. Records</h3>
+          <p>Migrate the selected objects.</p>
+          <button class="primary" data-cmd="records">Migrate records</button>
+        </div>
+        <div class="step">
+          <h3>3. Files</h3>
+          <p>Download, upload &amp; link files.</p>
+          <button class="primary" data-cmd="run">Migrate files</button>
+          <label style="display:block; margin-top:8px; font-size:12px; color:var(--muted);">
+            <input type="checkbox" id="allVersions" /> include version history
+          </label>
+        </div>
+        <div class="step">
+          <h3>4. Verify</h3>
+          <p>Final state &amp; any failures.</p>
+          <button class="primary" data-cmd="verify">Verify</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="log-head">
+        <strong>Output</strong>
+        <span class="status" id="status">idle</span>
+      </div>
+      <div class="progress-wrap hidden" id="progressWrap">
+        <div class="progress-meta">
+          <span id="progressLabel"></span>
+          <span id="progressEta"></span>
+        </div>
+        <div class="track"><div class="bar" id="bar"></div></div>
+      </div>
+      <pre id="log">Ready. Pick a step above.
 Tip: run steps in order (Check → Records → Files → Verify).</pre>
-  </div>
+    </div>
+  </section>
 </main>
 
 <script>
-  const log = document.getElementById('log');
-  const status = document.getElementById('status');
-  const buttons = [...document.querySelectorAll('button[data-cmd]')];
-  let es = null;
+/* ---------------- tabs ---------------- */
+const tabs = [...document.querySelectorAll('nav.tabs button')];
+const panels = [...document.querySelectorAll('section[data-panel]')];
+tabs.forEach((t) => t.addEventListener('click', () => {
+  tabs.forEach((x) => x.classList.toggle('active', x === t));
+  panels.forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== t.dataset.tab));
+}));
 
-  function setStatus(text, cls) { status.textContent = text; status.className = 'status ' + (cls || ''); }
-  function append(line) { log.textContent += '\n' + line; log.scrollTop = log.scrollHeight; }
-
-  buttons.forEach((b) => b.addEventListener('click', () => run(b.dataset.cmd)));
-
-  function run(cmd) {
-    if (es) es.close();
-    buttons.forEach((b) => (b.disabled = true));
-    log.textContent = '$ ' + cmd;
-    setStatus('running…', 'run');
-
-    let qs = '/run?cmd=' + encodeURIComponent(cmd);
-    if (cmd === 'run' && document.getElementById('allVersions').checked) qs += '&allVersions=1';
-    es = new EventSource(qs);
-    es.addEventListener('log', (e) => append(JSON.parse(e.data)));
-    es.addEventListener('done', (e) => {
-      const code = JSON.parse(e.data).code;
-      setStatus(code === 0 ? 'done ✓' : 'failed (exit ' + code + ')', code === 0 ? 'ok' : 'err');
-      buttons.forEach((b) => (b.disabled = false));
-      es.close(); es = null;
-    });
-    es.onerror = () => {
-      setStatus('connection lost', 'err');
-      buttons.forEach((b) => (b.disabled = false));
-      if (es) { es.close(); es = null; }
-    };
+/* ---------------- setup: connections ---------------- */
+const checkBtn = document.getElementById('checkConns');
+checkBtn.addEventListener('click', async () => {
+  const cards = document.querySelectorAll('#conns .conn');
+  cards.forEach((c) => {
+    c.querySelector('.state').innerHTML = '<span class="spinner"></span>checking…';
+    c.querySelector('.url').textContent = '';
+  });
+  checkBtn.disabled = true;
+  try {
+    const r = await fetch('/api/status');
+    const data = await r.json();
+    renderConn(cards[0], data.source, data.config.sourceOrg);
+    renderConn(cards[1], data.target, data.config.targetOrg);
+  } catch (e) {
+    cards.forEach((c) => (c.querySelector('.state').innerHTML = '<span class="dot err"></span>error'));
   }
+  checkBtn.disabled = false;
+});
+function renderConn(card, s, alias) {
+  const state = card.querySelector('.state');
+  const url = card.querySelector('.url');
+  if (s && s.ok) {
+    state.innerHTML = '<span class="dot ok"></span>connected';
+    url.textContent = s.instanceUrl || (alias ? 'alias: ' + alias : '');
+  } else {
+    state.innerHTML = '<span class="dot err"></span>not connected';
+    url.textContent = (s && s.error) || '';
+  }
+}
+
+/* ---------------- objects & fields ---------------- */
+const loadBtn = document.getElementById('loadObjects');
+const objList = document.getElementById('objList');
+const saveBar = document.getElementById('saveBar');
+const saveMsg = document.getElementById('saveMsg');
+let objectsData = [];
+
+loadBtn.addEventListener('click', async () => {
+  objList.innerHTML = '<span class="spinner"></span> describing both orgs…';
+  saveBar.classList.add('hidden');
+  loadBtn.disabled = true;
+  try {
+    const r = await fetch('/api/objects');
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    objectsData = data.objects || [];
+    renderObjects();
+    saveBar.classList.remove('hidden');
+  } catch (e) {
+    objList.innerHTML = '<div style="color:var(--err);font-size:13px;">Could not load objects: ' + escapeHtml(e.message) + '<br>Check connections in the Setup tab first.</div>';
+  }
+  loadBtn.disabled = false;
+});
+
+function renderObjects() {
+  objList.innerHTML = '';
+  objectsData.forEach((o, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'obj';
+    if (o.error) {
+      wrap.innerHTML = '<div class="obj-head"><span class="name">' + o.name +
+        '</span><span class="count" style="color:var(--err)">' + escapeHtml(o.error) + '</span></div>';
+      objList.appendChild(wrap);
+      return;
+    }
+    const auto = o.selected === 'auto';
+    const selectedSet = new Set(auto ? o.available : o.selected);
+
+    const head = document.createElement('div');
+    head.className = 'obj-head';
+    head.innerHTML =
+      '<input type="checkbox" class="enable" ' + (o.enabled ? 'checked' : '') + ' />' +
+      '<span class="name">' + o.name + '</span>' +
+      '<span class="count">' + o.available.length + ' fields</span>';
+
+    const body = document.createElement('div');
+    body.className = 'obj-body';
+    const modeName = 'mode-' + idx;
+    body.innerHTML =
+      '<div class="mode">' +
+        '<label><input type="radio" name="' + modeName + '" value="auto" ' + (auto ? 'checked' : '') + '> All copyable fields</label>' +
+        '<label><input type="radio" name="' + modeName + '" value="pick" ' + (auto ? '' : 'checked') + '> Choose fields</label>' +
+      '</div>' +
+      '<div class="fields ' + (auto ? 'disabled' : '') + '">' +
+        o.available.map((f) =>
+          '<label><input type="checkbox" class="field" value="' + f + '" ' +
+          (selectedSet.has(f) ? 'checked' : '') + '>' + f + '</label>'
+        ).join('') +
+      '</div>';
+
+    // toggle body open/closed (but not when clicking the enable checkbox)
+    head.addEventListener('click', (e) => {
+      if (e.target.classList.contains('enable')) return;
+      body.classList.toggle('open');
+    });
+    // enable/disable dims the whole object
+    head.querySelector('.enable').addEventListener('change', (e) => {
+      wrap.style.opacity = e.target.checked ? '1' : '.5';
+    });
+    if (!o.enabled) wrap.style.opacity = '.5';
+    // auto vs pick toggles the field grid
+    body.querySelectorAll('input[name="' + modeName + '"]').forEach((radio) =>
+      radio.addEventListener('change', () => {
+        body.querySelector('.fields').classList.toggle('disabled', radio.value === 'auto' && radio.checked);
+      })
+    );
+
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    objList.appendChild(wrap);
+  });
+}
+
+document.getElementById('saveObjects').addEventListener('click', async () => {
+  const payload = { objects: [] };
+  const wraps = objList.querySelectorAll('.obj');
+  objectsData.forEach((o, idx) => {
+    if (o.error) return;
+    const wrap = wraps[idx];
+    if (!wrap.querySelector('.enable').checked) return; // disabled object -> exclude
+    const mode = wrap.querySelector('input[type="radio"]:checked').value;
+    if (mode === 'auto') {
+      payload.objects.push({ name: o.name, fields: 'auto' });
+    } else {
+      const fields = [...wrap.querySelectorAll('.field:checked')].map((c) => c.value);
+      payload.objects.push({ name: o.name, fields });
+    }
+  });
+  saveMsg.textContent = 'saving…';
+  try {
+    const r = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    saveMsg.textContent = 'Saved ✓ ' + data.objects.length + ' object(s) → migration.config.json';
+  } catch (e) {
+    saveMsg.textContent = 'Save failed: ' + e.message;
+  }
+});
+
+/* ---------------- run: streaming + progress ---------------- */
+const log = document.getElementById('log');
+const status = document.getElementById('status');
+const runButtons = [...document.querySelectorAll('button[data-cmd]')];
+const progressWrap = document.getElementById('progressWrap');
+const bar = document.getElementById('bar');
+const progressLabel = document.getElementById('progressLabel');
+const progressEta = document.getElementById('progressEta');
+let es = null;
+let startTs = 0;
+
+function setStatus(text, cls) { status.textContent = text; status.className = 'status ' + (cls || ''); }
+function append(line) { log.textContent += '\n' + line; log.scrollTop = log.scrollHeight; }
+
+function resetProgress(show) {
+  progressWrap.classList.toggle('hidden', !show);
+  bar.style.width = '0';
+  bar.classList.add('indet'); // indeterminate until we see a fraction
+  progressLabel.textContent = show ? 'working…' : '';
+  progressEta.textContent = '';
+}
+function updateProgress(done, total) {
+  bar.classList.remove('indet');
+  const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  bar.style.width = pct + '%';
+  progressLabel.textContent = done + ' / ' + total + '  (' + pct + '%)';
+  const elapsed = (Date.now() - startTs) / 1000;
+  if (done > 0 && done < total && elapsed > 1) {
+    const eta = Math.round((elapsed / done) * (total - done));
+    progressEta.textContent = 'ETA ' + fmtTime(eta);
+  } else if (done >= total && total > 0) {
+    progressEta.textContent = 'done in ' + fmtTime(Math.round(elapsed));
+  }
+}
+function fmtTime(s) {
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60), r = s % 60;
+  return m + 'm ' + (r < 10 ? '0' : '') + r + 's';
+}
+
+// Pull "(done/total)" progress out of a log line; return [done,total] or null.
+function parseFraction(line) {
+  const m = line.match(/\((\d+)\s*\/\s*(\d+)\)/);
+  if (m) return [parseInt(m[1], 10), parseInt(m[2], 10)];
+  return null;
+}
+
+runButtons.forEach((b) => b.addEventListener('click', () => run(b.dataset.cmd)));
+
+function run(cmd) {
+  if (es) es.close();
+  runButtons.forEach((b) => (b.disabled = true));
+  log.textContent = '$ ' + cmd;
+  setStatus('running…', 'run');
+  startTs = Date.now();
+  resetProgress(cmd === 'records' || cmd === 'run');
+
+  let qs = '/run?cmd=' + encodeURIComponent(cmd);
+  if (cmd === 'run' && document.getElementById('allVersions').checked) qs += '&allVersions=1';
+  es = new EventSource(qs);
+  es.addEventListener('log', (e) => {
+    const line = JSON.parse(e.data);
+    append(line);
+    const frac = parseFraction(line);
+    if (frac) updateProgress(frac[0], frac[1]);
+  });
+  es.addEventListener('done', (e) => {
+    const code = JSON.parse(e.data).code;
+    setStatus(code === 0 ? 'done ✓' : 'failed (exit ' + code + ')', code === 0 ? 'ok' : 'err');
+    if (!progressWrap.classList.contains('hidden')) {
+      bar.classList.remove('indet');
+      bar.style.width = '100%';
+      if (code === 0) {
+        const elapsed = Math.round((Date.now() - startTs) / 1000);
+        progressLabel.textContent = 'complete';
+        progressEta.textContent = 'finished in ' + fmtTime(elapsed);
+      } else {
+        progressLabel.textContent = 'stopped';
+      }
+    }
+    runButtons.forEach((b) => (b.disabled = false));
+    es.close(); es = null;
+  });
+  es.onerror = () => {
+    setStatus('connection lost', 'err');
+    runButtons.forEach((b) => (b.disabled = false));
+    if (es) { es.close(); es = null; }
+  };
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 </script>
 </body>
 </html>
