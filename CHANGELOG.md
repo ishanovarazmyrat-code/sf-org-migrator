@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.2.0] — 2026-07-22
 
 - **Partial-failure reports.** Every phase (records, download, upload, link)
   now writes failed/skipped items to `work/errors/<phase>-<timestamp>.csv`
