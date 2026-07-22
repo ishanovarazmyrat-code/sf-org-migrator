@@ -78,6 +78,18 @@
   .fields.disabled { opacity: .45; pointer-events: none; }
   .savebar { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
   .savemsg { font-size: 13px; color: var(--muted); }
+  .addrow { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; flex-wrap: wrap; }
+  .addrow input {
+    flex: 1 1 280px; padding: 9px 12px; font-size: 13.5px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card); color: var(--fg);
+  }
+  .obj-meta { font-size: 12px; color: var(--muted); margin: 2px 0 10px; }
+  .obj-meta code { font-size: 11.5px; }
+  .warn-badge {
+    display: inline-block; font-size: 11px; font-weight: 600; color: #92400e;
+    background: #fef3c7; border-radius: 5px; padding: 1px 7px; margin-left: 6px;
+  }
+  @media (prefers-color-scheme: dark) { .warn-badge { color: #fde68a; background: #422006; } }
 
   .steps { display: flex; flex-wrap: wrap; gap: 12px; }
   .step { flex: 1 1 190px; }
@@ -144,7 +156,15 @@
       <p class="hint">Loaded from both orgs — only fields that exist and are writable in both are shown. Your choice is saved to <code>migration.config.json</code> and used by the records migration.</p>
       <button class="primary" id="loadObjects">Load objects</button>
       <div id="objList" style="margin-top:16px;"></div>
-      <div class="savebar" id="saveBar" class="hidden">
+
+      <div class="addrow hidden" id="addRow">
+        <input list="allObjects" id="addInput" placeholder="Add another object (name or label)…" autocomplete="off" />
+        <datalist id="allObjects"></datalist>
+        <button class="ghost" id="addBtn">＋ Add</button>
+        <span class="savemsg" id="addMsg"></span>
+      </div>
+
+      <div class="savebar hidden" id="saveBar">
         <button class="primary" id="saveObjects">Save selection</button>
         <span class="savemsg" id="saveMsg"></span>
       </div>
@@ -246,23 +266,71 @@ const loadBtn = document.getElementById('loadObjects');
 const objList = document.getElementById('objList');
 const saveBar = document.getElementById('saveBar');
 const saveMsg = document.getElementById('saveMsg');
+const addRow = document.getElementById('addRow');
+const addInput = document.getElementById('addInput');
+const addBtn = document.getElementById('addBtn');
+const addMsg = document.getElementById('addMsg');
+const allObjectsList = document.getElementById('allObjects');
 let objectsData = [];
+let allObjectsByLabel = {}; // "Label (Name)" -> Name, for the picker
 
 loadBtn.addEventListener('click', async () => {
   objList.innerHTML = '<span class="spinner"></span> describing both orgs…';
   saveBar.classList.add('hidden');
+  addRow.classList.add('hidden');
   loadBtn.disabled = true;
   try {
-    const r = await fetch('/api/objects');
-    const data = await r.json();
+    // The default objects (with field plans) and the full picker list load together.
+    const [objsRes, allRes] = await Promise.all([fetch('/api/objects'), fetch('/api/all-objects')]);
+    const data = await objsRes.json();
     if (data.error) throw new Error(data.error);
     objectsData = data.objects || [];
     renderObjects();
     saveBar.classList.remove('hidden');
+    addRow.classList.remove('hidden');
+    // Populate the "add object" picker (best-effort; the tab still works without it).
+    try {
+      const all = await allRes.json();
+      allObjectsList.innerHTML = '';
+      allObjectsByLabel = {};
+      (all.objects || []).forEach((o) => {
+        const key = o.label + ' (' + o.name + ')';
+        allObjectsByLabel[key] = o.name;
+        allObjectsByLabel[o.name] = o.name; // allow typing the API name directly
+        const opt = document.createElement('option');
+        opt.value = key;
+        allObjectsList.appendChild(opt);
+      });
+    } catch (_) { /* picker optional */ }
   } catch (e) {
     objList.innerHTML = '<div style="color:var(--err);font-size:13px;">Could not load objects: ' + escapeHtml(e.message) + '<br>Check connections in the Setup tab first.</div>';
   }
   loadBtn.disabled = false;
+});
+
+addBtn.addEventListener('click', async () => {
+  const raw = addInput.value.trim();
+  const name = allObjectsByLabel[raw] || raw;
+  if (!name) { addMsg.textContent = 'Type an object name.'; return; }
+  if (objectsData.some((o) => o.name === name)) {
+    addMsg.textContent = name + ' is already in the list.';
+    return;
+  }
+  addMsg.innerHTML = '<span class="spinner"></span> reading ' + escapeHtml(name) + '…';
+  addBtn.disabled = true;
+  try {
+    const known = objectsData.filter((o) => !o.error).map((o) => o.name).join(',');
+    const r = await fetch('/api/object?name=' + encodeURIComponent(name) + '&known=' + encodeURIComponent(known));
+    const o = await r.json();
+    if (o.error) throw new Error(o.error);
+    objectsData.push(o);
+    renderObjects();
+    addInput.value = '';
+    addMsg.textContent = 'Added ' + o.name + '. Review its fields below, then Save selection.';
+  } catch (e) {
+    addMsg.textContent = 'Could not add: ' + e.message;
+  }
+  addBtn.disabled = false;
 });
 
 function renderObjects() {
@@ -279,17 +347,31 @@ function renderObjects() {
     const auto = o.selected === 'auto';
     const selectedSet = new Set(auto ? o.available : o.selected);
 
+    const missingXid = o.externalIdOnTarget === false;
     const head = document.createElement('div');
     head.className = 'obj-head';
     head.innerHTML =
       '<input type="checkbox" class="enable" ' + (o.enabled ? 'checked' : '') + ' />' +
       '<span class="name">' + o.name + '</span>' +
+      (missingXid ? '<span class="warn-badge">⚠ external Id missing on target</span>' : '') +
       '<span class="count">' + o.available.length + ' fields</span>';
+
+    // external-Id + detected parents (informational; warns when the external
+    // Id field isn't on the target yet).
+    const parentPairs = o.parents ? Object.entries(o.parents) : [];
+    let meta = 'External Id: <code>' + (o.externalId || '') + '</code>';
+    if (missingXid) {
+      meta += ' <span class="warn-badge">create it on the target + add to <code>Migration_Access</code></span>';
+    }
+    if (parentPairs.length) {
+      meta += '<br>Parent remap: ' + parentPairs.map((p) => '<code>' + p[0] + '</code> → ' + p[1]).join(', ');
+    }
 
     const body = document.createElement('div');
     body.className = 'obj-body';
     const modeName = 'mode-' + idx;
     body.innerHTML =
+      (o.externalId ? '<div class="obj-meta">' + meta + '</div>' : '') +
       '<div class="mode">' +
         '<label><input type="radio" name="' + modeName + '" value="auto" ' + (auto ? 'checked' : '') + '> All copyable fields</label>' +
         '<label><input type="radio" name="' + modeName + '" value="pick" ' + (auto ? '' : 'checked') + '> Choose fields</label>' +
@@ -332,12 +414,13 @@ document.getElementById('saveObjects').addEventListener('click', async () => {
     const wrap = wraps[idx];
     if (!wrap.querySelector('.enable').checked) return; // disabled object -> exclude
     const mode = wrap.querySelector('input[type="radio"]:checked').value;
-    if (mode === 'auto') {
-      payload.objects.push({ name: o.name, fields: 'auto' });
-    } else {
-      const fields = [...wrap.querySelectorAll('.field:checked')].map((c) => c.value);
-      payload.objects.push({ name: o.name, fields });
-    }
+    const entry = { name: o.name };
+    entry.fields = mode === 'auto' ? 'auto' : [...wrap.querySelectorAll('.field:checked')].map((c) => c.value);
+    // Custom (added) objects carry their external Id + detected parents so the
+    // server can persist them; default objects are reconstructed server-side.
+    if (o.externalId) entry.externalId = o.externalId;
+    if (o.parents && Object.keys(o.parents).length) entry.parents = o.parents;
+    payload.objects.push(entry);
   });
   saveMsg.textContent = 'saving…';
   try {

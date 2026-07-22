@@ -51,6 +51,39 @@ function baseObjectDefs() {
   return map;
 }
 
+const NAME_RE = /^[A-Za-z0-9_]+$/;
+const safeName = (s) => (typeof s === 'string' && NAME_RE.test(s) ? s : null);
+
+/** The external-Id field convention: Account -> Legacy_Account_Id__c,
+ *  Invoice__c -> Legacy_Invoice_Id__c. */
+function defaultExternalId(name) {
+  return 'Legacy_' + name.replace(/__c$/i, '') + '_Id__c';
+}
+
+/** Stable topological sort so a parent object is listed before any child that
+ *  remaps a lookup onto it (the migration processes objects in order). Sorts in
+ *  place; ignores parents that aren't in the set, and tolerates cycles. */
+function sortByDependency(entries) {
+  const inSet = new Set(entries.map((e) => e.name));
+  const deps = new Map(
+    entries.map((e) => [e.name, new Set(Object.values(e.parents || {}).filter((p) => inSet.has(p) && p !== e.name))])
+  );
+  const byName = new Map(entries.map((e) => [e.name, e]));
+  const out = [];
+  const done = new Set();
+  const visit = (name, stack) => {
+    if (done.has(name) || stack.has(name)) return; // cycle guard
+    stack.add(name);
+    for (const p of deps.get(name) || []) visit(p, stack);
+    stack.delete(name);
+    done.add(name);
+    out.push(byName.get(name));
+  };
+  for (const e of entries) visit(e.name, new Set());
+  entries.length = 0;
+  entries.push(...out);
+}
+
 /* ------------------------------------------------------------------ */
 /* JSON helpers                                                        */
 /* ------------------------------------------------------------------ */
@@ -142,6 +175,79 @@ async function apiObjects(res) {
 }
 
 /* ------------------------------------------------------------------ */
+/* /api/all-objects - every migratable object in the source org        */
+/* ------------------------------------------------------------------ */
+async function apiAllObjects(res) {
+  const sf = require('./lib/sf');
+  const source = await sf.connect('SOURCE');
+  const g = await source.describeGlobal();
+  const skip = /(Share|History|Feed|ChangeEvent|Tag)$/;
+  const list = (g.sobjects || [])
+    .filter(
+      (o) =>
+        o.queryable && o.createable && o.keyPrefix && !o.deprecatedAndHidden &&
+        !skip.test(o.name) && !/__(mdt|e|x|b)$/i.test(o.name)
+    )
+    .map((o) => ({ name: o.name, label: o.label, custom: !!o.custom }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  sendJson(res, 200, { objects: list });
+}
+
+/* ------------------------------------------------------------------ */
+/* /api/object?name=X&known=A,B - one object's plan for the "Add" flow  */
+/*   returns copyable fields, its external-Id (and whether it exists on */
+/*   the target), and lookups that map to already-selected parents.     */
+/* ------------------------------------------------------------------ */
+async function apiObject(res, url) {
+  const sf = require('./lib/sf');
+  const records = require('./lib/records');
+  const name = safeName(url.searchParams.get('name'));
+  if (!name) return sendJson(res, 400, { error: 'invalid object name' });
+  const known = new Set(
+    (url.searchParams.get('known') || '').split(',').map(safeName).filter(Boolean)
+  );
+
+  const source = await sf.connect('SOURCE');
+  const target = await sf.connect('TARGET');
+
+  // Object must exist on the target too.
+  let tgtDesc;
+  try {
+    tgtDesc = await target.sobject(name).describe();
+  } catch (_) {
+    return sendJson(res, 200, { name, error: `"${name}" does not exist in the target org.` });
+  }
+  const srcDesc = await source.sobject(name).describe();
+
+  // Detect lookups that point at an already-selected object -> parent remap.
+  const parents = {};
+  for (const f of srcDesc.fields) {
+    if (f.type === 'reference' && f.name !== 'RecordTypeId' && Array.isArray(f.referenceTo)) {
+      const ref = f.referenceTo.find((r) => known.has(r));
+      if (ref && !parents[f.name]) parents[f.name] = ref;
+    }
+  }
+
+  const externalId = defaultExternalId(name);
+  const externalIdOnTarget = tgtDesc.fields.some((f) => f.name === externalId);
+
+  const objCfg = { name, externalId, parents, fields: 'auto' };
+  const plan = await records.buildFieldPlan(source, target, objCfg, () => {});
+
+  sendJson(res, 200, {
+    name,
+    label: srcDesc.label,
+    externalId,
+    externalIdOnTarget,
+    parents,
+    available: plan.fields,
+    selected: 'auto',
+    enabled: true,
+    custom: !!srcDesc.custom,
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* POST /api/config - persist the object/field selection               */
 /* body: { objects: [ { name, fields: 'auto' | [..] } ] }              */
 /* ------------------------------------------------------------------ */
@@ -153,13 +259,35 @@ async function apiSaveConfig(req, res) {
   }
   const entries = [];
   for (const sel of body.objects) {
-    const def = defs[sel.name];
-    if (!def) continue; // ignore unknown objects
-    const entry = { name: def.name, externalId: def.externalId, fields: 'auto' };
-    if (def.parents) entry.parents = def.parents;
-    if (Array.isArray(sel.fields) && sel.fields.length) entry.fields = sel.fields;
+    const name = safeName(sel.name);
+    if (!name) continue;
+    const def = defs[name];
+    // Known default objects: trust our own externalId/parents. Custom objects
+    // added via the UI: take (sanitized) externalId/parents from the client.
+    let externalId, parents;
+    if (def) {
+      externalId = def.externalId;
+      parents = def.parents;
+    } else {
+      externalId = safeName(sel.externalId) || defaultExternalId(name);
+      parents = {};
+      if (sel.parents && typeof sel.parents === 'object') {
+        for (const [k, v] of Object.entries(sel.parents)) {
+          const sk = safeName(k), sv = safeName(v);
+          if (sk && sv) parents[sk] = sv;
+        }
+      }
+    }
+    const entry = { name, externalId, fields: 'auto' };
+    if (parents && Object.keys(parents).length) entry.parents = parents;
+    if (Array.isArray(sel.fields) && sel.fields.length) {
+      entry.fields = sel.fields.map(safeName).filter(Boolean);
+    }
     entries.push(entry);
   }
+  // Order matters for the migration: a parent object must come before any
+  // child that remaps a lookup to it. Topologically sort by parents.
+  sortByDependency(entries);
   const cfg = readConfig();
   cfg.objects = entries;
   writeConfig(cfg);
@@ -206,6 +334,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/status') return await apiStatus(res);
     if (url.pathname === '/api/objects') return await apiObjects(res);
+    if (url.pathname === '/api/all-objects') return await apiAllObjects(res);
+    if (url.pathname === '/api/object') return await apiObject(res, url);
     if (url.pathname === '/api/config' && req.method === 'POST') {
       return await apiSaveConfig(req, res);
     }
