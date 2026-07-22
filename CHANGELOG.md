@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.1.0] — 2026-07-22
+
+- **Richer local web UI** (`sf-org-migrator ui`): a Setup tab that checks both
+  org connections, an Objects & Fields tab that reads both orgs and lets you
+  pick which objects and fields to migrate (saved to `migration.config.json`),
+  and a Run tab with a live log plus a progress bar and ETA. Still localhost-only.
+- Descriptions are capabilities-focused; removed comparison/limit framing.
+
 ## [1.0.1] — 2026-07-21
 
 - Removed a customer-specific custom-object example from the code and docs.
