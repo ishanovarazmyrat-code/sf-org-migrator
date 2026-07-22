@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.4.0] — 2026-07-22
+
+- **Required fields are shown in the web UI.** The Objects & Fields tab labels
+  each field that's required on the target org, and warns inline if you uncheck
+  one in "Choose fields" mode — so you don't have to remember every object's
+  required fields to avoid failed inserts.
+
 ## [1.3.0] — 2026-07-22
 
 - **Add any object from the web UI.** The Objects & Fields tab now has a
