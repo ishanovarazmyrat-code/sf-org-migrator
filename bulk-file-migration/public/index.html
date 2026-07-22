@@ -214,6 +214,10 @@
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid color-mix(in srgb, var(--brand) 30%, transparent);
     border-top-color: var(--brand); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .stepper button.completed .num { background: var(--ok-bg); color: var(--ok); }
+  .nextbar { display: none; margin-top: 16px; align-items: center; gap: 12px; }
+  .nextbar.show { display: flex; animation: pop .3s ease; }
+  .fieldfilter { max-width: 250px; margin: 0 0 10px; padding: 7px 11px; font-size: 12.5px; }
   .hidden { display: none !important; }
   .check-pop { animation: pop .4s cubic-bezier(.2,.9,.3,1.4); }
   @keyframes pop { 0% { transform: scale(0); } 70% { transform: scale(1.2); } 100% { transform: scale(1); } }
@@ -249,6 +253,10 @@
         <div class="conn-tile"><div class="role">Target — to</div><div class="st"><span class="d"></span><span class="txt">Not checked</span></div><div class="url"></div></div>
       </div>
       <div style="margin-top:16px;"><button class="btn primary" id="checkConns">Check connections</button></div>
+      <div class="nextbar" id="nextSetup">
+        <button class="btn primary" data-go="objects">Continue to Objects &amp; Fields →</button>
+        <span class="savemsg">Both orgs are connected — you're ready.</span>
+      </div>
     </div>
 
     <div class="card">
@@ -285,7 +293,7 @@
       <h2>Objects &amp; fields to migrate</h2>
       <p class="sub">Loaded from both orgs — only fields that exist and are writable in both are shown. Your choice is saved and used by the records migration.</p>
       <button class="btn primary" id="loadObjects">Load objects</button>
-      <div id="objList" style="margin-top:18px;"></div>
+      <div id="objList" style="margin-top:18px;"><div class="empty" style="padding:28px;"><div class="big">🗂️</div><p><b>Nothing loaded yet.</b></p><p>Click “Load objects” to read what both orgs share.</p></div></div>
       <div class="addrow hidden" id="addRow">
         <input list="allObjects" id="addInput" class="field" style="flex:1 1 260px;margin:0;" placeholder="Add another object (name or label)…" autocomplete="off" />
         <datalist id="allObjects"></datalist>
@@ -295,6 +303,7 @@
       <div class="savebar hidden" id="saveBar">
         <button class="btn primary" id="saveObjects">Save selection</button>
         <span class="savemsg" id="saveMsg"></span>
+        <button class="btn ghost sm hidden" id="nextObjects" data-go="run">Continue to Run →</button>
       </div>
     </div>
   </section>
@@ -330,6 +339,10 @@
           <button class="btn ghost sm block phaseBtn">Verify</button>
           <div class="pbar"><div class="pfill"></div></div>
         </div>
+      </div>
+      <div class="allbtn">
+        <button class="btn primary" id="runAll">▶ Run full migration</button>
+        <span class="hint">Records → Files → Verify, one after another.</span>
       </div>
     </div>
 
@@ -374,6 +387,12 @@ $$('.stepper button').forEach((t) => t.addEventListener('click', () => {
   $$('.stepper button').forEach((x) => x.classList.toggle('active', x === t));
   $$('section[data-panel]').forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== t.dataset.tab));
 }));
+function goTab(tab) { const b = $('.stepper button[data-tab="' + tab + '"]'); if (b) b.click(); }
+function markStep(tab) {
+  const b = $('.stepper button[data-tab="' + tab + '"]');
+  if (b && !b.classList.contains('completed')) { b.classList.add('completed'); b.querySelector('.num').textContent = '✓'; }
+}
+$$('[data-go]').forEach((b) => b.addEventListener('click', () => goTab(b.dataset.go)));
 
 /* ===================== setup: connections ===================== */
 const checkBtn = $('#checkConns');
@@ -386,8 +405,13 @@ checkBtn.addEventListener('click', async () => {
     renderConn(cards[0], data.source, data.config.sourceOrg, '#mini-s');
     renderConn(cards[1], data.target, data.config.targetOrg, '#mini-t');
     prefillConnect(data.apps);
-    if (data.source.ok && data.target.ok) toast('ok', 'Both orgs connected', 'You can move on to Objects & Fields.');
-    else toast('warn', 'Not fully connected', 'Connect the org(s) below or check your login.');
+    if (data.source.ok && data.target.ok) {
+      toast('ok', 'Both orgs connected', 'You can move on to Objects & Fields.');
+      markStep('setup'); $('#nextSetup').classList.add('show');
+    } else {
+      toast('warn', 'Not fully connected', 'Connect the org(s) below or check your login.');
+      $('#nextSetup').classList.remove('show');
+    }
   } catch (e) {
     cards.forEach((c) => (c.querySelector('.txt').textContent = 'Error'));
     toast('err', 'Could not check connections', e.message);
@@ -475,6 +499,7 @@ loadBtn.addEventListener('click', async () => {
   loadBtn.disabled = false;
 });
 
+addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addBtn.click(); } });
 addBtn.addEventListener('click', async () => {
   const raw = addInput.value.trim(); const name = allObjectsByLabel[raw] || raw;
   if (!name) { addMsg.textContent = 'Type an object name.'; return; }
@@ -507,7 +532,7 @@ function renderObjects() {
     head.innerHTML = '<input type="checkbox" class="enable" ' + (o.enabled ? 'checked' : '') + ' />' +
       '<span class="name">' + o.name + '</span>' +
       (missingXid ? '<span class="badge warn">⚠ external Id missing</span>' : '') +
-      '<span class="count">' + o.available.length + ' fields <span class="chevron">▸</span></span>';
+      '<span class="count"><span class="cnum">' + o.available.length + ' fields</span> <span class="chevron">▸</span></span>';
 
     const parentPairs = o.parents ? Object.entries(o.parents) : [];
     let meta = 'External Id: <code>' + (o.externalId || '') + '</code>';
@@ -518,6 +543,7 @@ function renderObjects() {
     body.innerHTML = (o.externalId ? '<div class="obj-meta">' + meta + '</div>' : '') +
       '<div class="mode"><label><input type="radio" name="' + modeName + '" value="auto" ' + (auto ? 'checked' : '') + '> All copyable fields</label>' +
       '<label><input type="radio" name="' + modeName + '" value="pick" ' + (auto ? '' : 'checked') + '> Choose fields</label></div>' +
+      '<input class="field fieldfilter" placeholder="Filter fields…" autocomplete="off" />' +
       '<div class="fields ' + (auto ? 'disabled' : '') + '">' + o.available.map((f) => {
         const req = reqSet.has(f);
         return '<label' + (req ? ' class="req"' : '') + '><input type="checkbox" class="field-cb" value="' + f + '"' + (req ? ' data-req="1"' : '') + (selectedSet.has(f) ? ' checked' : '') + '>' + f + (req ? '<span class="reqmark">req</span>' : '') + '</label>';
@@ -526,8 +552,18 @@ function renderObjects() {
     head.addEventListener('click', (e) => { if (e.target.classList.contains('enable')) return; body.classList.toggle('open'); wrap.classList.toggle('open'); });
     head.querySelector('.enable').addEventListener('change', (e) => { wrap.style.opacity = e.target.checked ? '1' : '.5'; });
     if (!o.enabled) wrap.style.opacity = '.5';
-    body.querySelectorAll('input[name="' + modeName + '"]').forEach((radio) => radio.addEventListener('change', () => { body.querySelector('.fields').classList.toggle('disabled', radio.value === 'auto' && radio.checked); updateReqWarn(body); }));
-    body.querySelector('.fields').addEventListener('change', (e) => { if (e.target.classList.contains('field-cb')) updateReqWarn(body); });
+    const cnum = head.querySelector('.cnum');
+    const updCount = () => {
+      const autoOn = body.querySelector('input[value="auto"]').checked;
+      cnum.textContent = autoOn ? o.available.length + ' fields' : $$('.field-cb:checked', body).length + '/' + o.available.length + ' fields';
+    };
+    body.querySelectorAll('input[name="' + modeName + '"]').forEach((radio) => radio.addEventListener('change', () => { body.querySelector('.fields').classList.toggle('disabled', radio.value === 'auto' && radio.checked); updateReqWarn(body); updCount(); }));
+    body.querySelector('.fields').addEventListener('change', (e) => { if (e.target.classList.contains('field-cb')) { updateReqWarn(body); updCount(); } });
+    body.querySelector('.fieldfilter').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      $$('.fields label', body).forEach((l) => { l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+    });
+    updCount();
 
     wrap.appendChild(head); wrap.appendChild(body); objList.appendChild(wrap);
   });
@@ -557,6 +593,7 @@ $('#saveObjects').addEventListener('click', async () => {
     const data = await (await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
     if (data.error) throw new Error(data.error);
     saveMsg.textContent = ''; toast('ok', 'Selection saved', data.objects.length + ' object(s) will be migrated.');
+    markStep('objects'); $('#nextObjects').classList.remove('hidden');
   } catch (e) { saveMsg.textContent = ''; toast('err', 'Save failed', e.message); }
 });
 
@@ -564,10 +601,15 @@ $('#saveObjects').addEventListener('click', async () => {
 const log = $('#log'), results = $('#results'), resultTitle = $('#resultTitle');
 const phaseEls = {}; $$('.phase').forEach((p) => (phaseEls[p.dataset.cmd] = p));
 const PHASE_LABELS = { stats: 'Check', records: 'Records', run: 'Files', verify: 'Verify' };
-let es = null, startTs = 0, activeCmd = null, buffer = '';
+let es = null, startTs = 0, activeCmd = null, buffer = '', queue = [], timerInt = null;
 
 $('#logToggle').addEventListener('click', () => { $('#logToggle').classList.toggle('open'); log.classList.toggle('open'); });
-$$('.phaseBtn').forEach((b) => b.addEventListener('click', () => run(b.closest('.phase').dataset.cmd)));
+$$('.phaseBtn').forEach((b) => b.addEventListener('click', () => { queue = []; run(b.closest('.phase').dataset.cmd); }));
+$('#runAll').addEventListener('click', () => {
+  queue = ['run', 'verify'];
+  toast('info', 'Full migration started', 'Records → Files → Verify will run in order.');
+  run('records');
+});
 
 function setChip(cmd, state, text) {
   const chip = phaseEls[cmd].querySelector('.chip');
@@ -584,7 +626,12 @@ function parseFraction(line) { const m = line.match(/\((\d+)\s*\/\s*(\d+)\)/); r
 
 function run(cmd) {
   if (es) es.close();
-  $$('.phaseBtn').forEach((b) => (b.disabled = true));
+  $$('.phaseBtn').forEach((b) => (b.disabled = true)); $('#runAll').disabled = true;
+  clearInterval(timerInt);
+  timerInt = setInterval(() => {
+    const chip = phaseEls[cmd].querySelector('.chip');
+    if (chip.classList.contains('running')) chip.textContent = 'Running · ' + fmtTime(Math.round((Date.now() - startTs) / 1000));
+  }, 1000);
   activeCmd = cmd; buffer = ''; log.textContent = '$ ' + cmd + '\n'; startTs = Date.now();
   setChip(cmd, 'running', 'Running'); setFill(cmd, 0, true);
   resultTitle.innerHTML = '<span class="spinner"></span> ' + PHASE_LABELS[cmd] + ' running…';
@@ -602,17 +649,24 @@ function run(cmd) {
   });
   es.addEventListener('done', (e) => {
     const code = JSON.parse(e.data).code; const ok = code === 0;
-    $$('.phaseBtn').forEach((b) => (b.disabled = false));
+    clearInterval(timerInt);
     setFill(cmd, 100, false);
     const hadFailure = /failed [1-9]|FAILED |Failed:/.test(buffer);
-    setChip(cmd, ok && !hadFailure ? 'done' : (ok ? 'done' : 'failed'), ok ? 'Done' : 'Failed');
+    setChip(cmd, ok ? 'done' : 'failed', ok ? 'Done' : 'Failed');
     renderResults(cmd, buffer, ok, hadFailure);
-    if (!ok) toast('err', PHASE_LABELS[cmd] + ' failed', 'Exit code ' + code + ' — see the technical log.');
+    if (!ok) {
+      toast('err', PHASE_LABELS[cmd] + ' failed', 'Exit code ' + code + ' — see the technical log.');
+      $('#logToggle').classList.add('open'); log.classList.add('open'); // show details on failure
+    }
     else if (hadFailure) toast('warn', PHASE_LABELS[cmd] + ' finished with issues', 'Some records/files did not go through.');
     else toast('ok', PHASE_LABELS[cmd] + ' complete', 'Finished in ' + fmtTime(Math.round((Date.now() - startTs) / 1000)) + '.');
+    if (ok && cmd === 'verify') markStep('run');
     es.close(); es = null;
+    if (ok && queue.length) { setTimeout(() => run(queue.shift()), 500); return; } // chain the full run
+    queue = [];
+    $$('.phaseBtn').forEach((b) => (b.disabled = false)); $('#runAll').disabled = false;
   });
-  es.onerror = () => { $$('.phaseBtn').forEach((b) => (b.disabled = false)); setChip(cmd, 'failed', 'Failed'); toast('err', 'Connection lost', 'The run stream was interrupted.'); if (es) { es.close(); es = null; } };
+  es.onerror = () => { clearInterval(timerInt); queue = []; $$('.phaseBtn').forEach((b) => (b.disabled = false)); $('#runAll').disabled = false; setChip(cmd, 'failed', 'Failed'); toast('err', 'Connection lost', 'The run stream was interrupted.'); if (es) { es.close(); es = null; } };
 }
 
 /* ---------- result parsing → friendly tiles ---------- */
