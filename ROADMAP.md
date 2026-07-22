@@ -79,10 +79,19 @@ install URL.
 
 ## Phase 3 — Monetization 🔴
 
-12. **Hosted SaaS** — you run it; customers connect both orgs via **OAuth web
-    flow** (no CLI install), pick objects, click Go. Needs multi-tenant auth,
-    a queue/worker backend, isolated & encrypted temporary storage, a
-    dashboard, and billing. Price per GB or subscription.
+11.5. ~~**Self-host URL (single-tenant)**~~ ✅ **DONE (2026-07-22).** Opt-in
+    "hosted mode" (`UI_ACCESS_KEY`) makes the web UI runnable behind a URL with
+    a login gate, binding all interfaces; localhost-only stays the default.
+    Dockerfile + `.dockerignore`, `render.yaml` one-click Blueprint, and
+    `HOSTING.md`. Org auth via `SOURCE_AUTH_URL`/`TARGET_AUTH_URL`. Each
+    customer runs their own instance — their tokens/data never touch a shared
+    server, so there's no multi-tenant liability. The cheap stepping stone to
+    #12. *Next enhancement:* in-browser "Connect org" (OAuth web flow) so no
+    auth URL/shell is needed.
+12. **Hosted SaaS (multi-tenant)** — you run it; customers connect both orgs via
+    **OAuth web flow** (no CLI install), pick objects, click Go. Needs
+    multi-tenant auth, a queue/worker backend, isolated & encrypted temporary
+    storage, a dashboard, and billing. Price per GB or subscription.
 13. **AppExchange listing** — Partner account, namespace, managed package, and
     the **Salesforce Security Review** (automated + manual scan; fee waived for
     free apps but the process is long). Covers the in-org Apex side only.
