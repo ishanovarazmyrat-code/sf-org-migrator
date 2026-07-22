@@ -1,7 +1,7 @@
 {
   "name": "sf-org-migrator",
   "version": "1.0.1",
-  "description": "Migrate Salesforce records and files between orgs — files up to 2GB (past SFDMU's 37MB and Apex's 12MB limits), resumable, with version history. OAuth login, auto field mapping, and a local web UI.",
+  "description": "Migrate Salesforce records and files between orgs — files up to 2GB, resumable, with version history. OAuth login, auto field mapping, and a local web UI.",
   "keywords": [
     "salesforce",
     "migration",
