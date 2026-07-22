@@ -3,214 +3,297 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Salesforce Org Migration</title>
+<title>Org Migrator</title>
 <style>
   :root {
     color-scheme: light dark;
-    --bg: #f4f6fb; --fg: #1a202c; --muted: #64748b;
-    --card: #fff; --border: #e2e8f0; --accent: #2b6cb0; --accent-fg: #fff;
-    --head: #2b6cb0; --ok: #38a169; --err: #e53e3e; --warn: #d69e2e;
-    --track: #e2e8f0; --logbg: #0d1117; --logfg: #d1d9e0;
+    --bg: #f6f8fc; --bg-2: #eef1f8; --fg: #131722; --muted: #67748c; --faint: #98a2b8;
+    --card: #ffffff; --card-2: #f7f9fd; --border: #e6eaf2; --border-2: #eef1f7;
+    --brand: #4f46e5; --brand-2: #7c3aed; --brand-ink: #ffffff;
+    --ok: #16a34a; --ok-bg: #e9f7ef; --warn: #d97706; --warn-bg: #fef3e2;
+    --err: #dc2626; --err-bg: #fdecec; --info: #2563eb; --info-bg: #e8f0fe;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+    --shadow-lg: 0 12px 40px rgba(16,24,40,.14);
+    --r: 16px; --r-sm: 10px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f141b; --fg: #e2e8f0; --muted: #94a3b8;
-      --card: #161c26; --border: #2d3748; --accent: #2b6cb0;
-      --head: #1a365d; --track: #2d3748; --logbg: #0b0f14;
+      --bg: #0a0d14; --bg-2: #0e121b; --fg: #e8ecf5; --muted: #94a0b8; --faint: #6b7690;
+      --card: #131926; --card-2: #0f1420; --border: #232c3d; --border-2: #1c2433;
+      --brand: #6366f1; --brand-2: #a78bfa;
+      --ok: #34d399; --ok-bg: #0e2a1f; --warn: #fbbf24; --warn-bg: #2a2010;
+      --err: #f87171; --err-bg: #2a1315; --info: #60a5fa; --info-bg: #10203a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --shadow-lg: 0 16px 48px rgba(0,0,0,.5);
     }
   }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
+    margin: 0; background: radial-gradient(1200px 500px at 50% -200px, var(--bg-2), var(--bg));
+    color: var(--fg); min-height: 100vh;
     font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    margin: 0; background: var(--bg); color: var(--fg);
+    -webkit-font-smoothing: antialiased;
   }
-  header { background: var(--head); color: #fff; padding: 18px 28px; }
-  header h1 { margin: 0; font-size: 20px; }
-  header p { margin: 4px 0 0; opacity: .85; font-size: 13px; }
-  main { max-width: 940px; margin: 0 auto; padding: 20px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  button { font-family: inherit; }
 
-  nav.tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
-  nav.tabs button {
-    background: transparent; color: var(--muted); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer;
+  /* ---------- top bar ---------- */
+  .appbar {
+    position: sticky; top: 0; z-index: 30;
+    backdrop-filter: blur(12px);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom: 1px solid var(--border);
   }
-  nav.tabs button.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .appbar .in { max-width: 1080px; margin: 0 auto; padding: 0 20px; height: 62px; display: flex; align-items: center; gap: 14px; }
+  .logo { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 18px;
+    background: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: 0 4px 14px color-mix(in srgb, var(--brand) 45%, transparent); }
+  .brand b { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+  .brand span { display: block; font-size: 11.5px; color: var(--muted); margin-top: -1px; }
+  .conn-mini { margin-left: auto; display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+  .conn-mini .c { display: inline-flex; align-items: center; gap: 6px; }
+  .conn-mini .d { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); box-shadow: 0 0 0 3px transparent; }
+  .conn-mini .d.ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+  .conn-mini .d.err { background: var(--err); box-shadow: 0 0 0 3px var(--err-bg); }
 
-  .card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    padding: 20px; margin-bottom: 18px;
-  }
-  .card h2 { margin: 0 0 4px; font-size: 16px; }
-  .card .hint { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+  main { max-width: 1080px; margin: 0 auto; padding: 26px 20px 80px; }
 
-  button.primary {
-    background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 7px;
-    padding: 10px 16px; font-size: 14px; cursor: pointer;
+  /* ---------- stepper ---------- */
+  .stepper { display: flex; gap: 8px; margin-bottom: 24px; }
+  .stepper button {
+    flex: 1; display: flex; align-items: center; gap: 10px; cursor: pointer;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px 16px; color: var(--muted); text-align: left; transition: .18s; box-shadow: var(--shadow);
   }
-  button.primary:hover { filter: brightness(1.08); }
-  button.primary:disabled { opacity: .5; cursor: default; }
-  button.ghost {
-    background: transparent; color: var(--accent); border: 1px solid var(--border);
-    border-radius: 7px; padding: 8px 14px; font-size: 13px; cursor: pointer;
-  }
+  .stepper button:hover { transform: translateY(-1px); }
+  .stepper button.active { border-color: transparent; background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff; }
+  .stepper .num { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; font-size: 12.5px; font-weight: 700;
+    background: var(--bg-2); color: var(--muted); flex: none; }
+  .stepper button.active .num { background: rgba(255,255,255,.22); color: #fff; }
+  .stepper .lbl b { display: block; font-size: 13.5px; font-weight: 650; }
+  .stepper .lbl small { font-size: 11px; opacity: .8; }
+  @media (max-width: 620px) { .stepper .lbl small { display: none; } .stepper button { padding: 10px; } }
 
-  .row { display: flex; gap: 14px; flex-wrap: wrap; }
-  .conn { flex: 1 1 260px; border: 1px solid var(--border); border-radius: 9px; padding: 14px; }
-  .conn .label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-  .conn .state { font-size: 15px; font-weight: 600; margin: 6px 0 2px; }
-  .conn .url { font-size: 12px; color: var(--muted); word-break: break-all; }
-  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
-  .dot.ok { background: var(--ok); } .dot.err { background: var(--err); } .dot.idle { background: var(--muted); }
+  /* ---------- cards ---------- */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); padding: 22px; margin-bottom: 18px; }
+  .card > h2 { margin: 0 0 3px; font-size: 17px; letter-spacing: -.01em; }
+  .card > .sub { margin: 0 0 18px; font-size: 13px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 680px) { .grid2 { grid-template-columns: 1fr; } }
 
-  .connect { flex: 1 1 300px; border: 1px solid var(--border); border-radius: 9px; padding: 14px; }
-  .connect .label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 8px; }
-  .connect input.cid, .connect input.csec {
-    width: 100%; box-sizing: border-box; padding: 8px 10px; margin-bottom: 8px; font-size: 13px;
-    border-radius: 7px; border: 1px solid var(--border); background: var(--card); color: var(--fg);
-  }
-  .connect .sbx { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin: 0 0 10px; }
-  .connect .connectBtn { width: 100%; }
-  .connect-status { font-size: 12.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
-  .connect-status a { font-weight: 600; }
-  .connect-status .code {
-    display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 15px; font-weight: 700;
-    letter-spacing: .12em; background: var(--track); border-radius: 6px; padding: 3px 9px; margin: 4px 0;
-  }
+  /* ---------- buttons ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+    border: 1px solid transparent; border-radius: 11px; padding: 10px 16px; font-size: 14px; font-weight: 600; transition: .16s; }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.primary { background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff; box-shadow: 0 6px 18px color-mix(in srgb, var(--brand) 32%, transparent); }
+  .btn.primary:not(:disabled):hover { transform: translateY(-1px); filter: brightness(1.05); }
+  .btn.ghost { background: var(--card); border-color: var(--border); color: var(--fg); }
+  .btn.ghost:not(:disabled):hover { border-color: var(--brand); color: var(--brand); }
+  .btn.block { width: 100%; }
+  .btn.sm { padding: 8px 13px; font-size: 13px; border-radius: 9px; }
 
-  .obj { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 12px; overflow: hidden; }
-  .obj-head {
-    display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-    cursor: pointer; user-select: none;
-  }
-  .obj-head .name { font-weight: 600; font-size: 14px; }
+  /* ---------- connection tiles ---------- */
+  .conn-tile { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--card-2); }
+  .conn-tile .role { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 700; }
+  .conn-tile .st { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 650; margin: 8px 0 3px; }
+  .conn-tile .st .d { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
+  .conn-tile .st .d.ok { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-bg); }
+  .conn-tile .st .d.err { background: var(--err); box-shadow: 0 0 0 4px var(--err-bg); }
+  .conn-tile .url { font-size: 11.5px; color: var(--muted); word-break: break-all; min-height: 15px; }
+
+  .field { width: 100%; padding: 10px 12px; margin-bottom: 9px; font-size: 13px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--card); color: var(--fg); }
+  .field:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
+  .checkline { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; margin: 2px 0 12px; cursor: pointer; }
+  .connect-status { font-size: 12.5px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
+  .connect-status a { color: var(--brand); font-weight: 600; }
+  .code-chip { display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 700;
+    letter-spacing: .14em; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; margin: 5px 0; }
+
+  /* ---------- objects ---------- */
+  .obj { border: 1px solid var(--border); border-radius: 13px; margin-bottom: 11px; overflow: hidden; background: var(--card); transition: .15s; }
+  .obj:hover { border-color: color-mix(in srgb, var(--brand) 35%, var(--border)); }
+  .obj-head { display: flex; align-items: center; gap: 11px; padding: 14px 16px; cursor: pointer; user-select: none; }
+  .obj-head .name { font-weight: 650; font-size: 14.5px; }
   .obj-head .count { font-size: 12px; color: var(--muted); margin-left: auto; }
-  .obj-body { padding: 0 14px 14px 38px; display: none; }
+  .chevron { color: var(--faint); transition: .2s; }
+  .obj-body.open ~ * .chevron, .obj.open .chevron { transform: rotate(90deg); }
+  .obj-body { padding: 0 16px 16px 43px; display: none; }
   .obj-body.open { display: block; }
-  .mode { display: flex; gap: 16px; margin: 4px 0 10px; font-size: 13px; }
+  .obj-meta { font-size: 12px; color: var(--muted); margin-bottom: 12px; padding: 10px 12px; background: var(--card-2); border-radius: 9px; }
+  .obj-meta code { font-size: 11.5px; }
+  .mode { display: flex; gap: 18px; margin: 4px 0 12px; font-size: 13px; }
   .mode label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
-  .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 14px; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 5px 16px; }
   .fields label { font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
   .fields.disabled { opacity: .45; pointer-events: none; }
-  .reqmark { font-size: 10px; font-weight: 700; color: var(--accent); letter-spacing: .03em; margin-left: 3px; }
-  .req-warn {
-    display: none; margin-top: 10px; font-size: 12.5px; color: #92400e;
-    background: #fef3c7; border-radius: 7px; padding: 8px 11px;
-  }
+  .reqmark { font-size: 9.5px; font-weight: 800; color: var(--brand); letter-spacing: .04em; margin-left: 4px; text-transform: uppercase; }
+  .req-warn { display: none; margin-top: 12px; font-size: 12.5px; color: var(--warn); background: var(--warn-bg); border-radius: 9px; padding: 9px 12px; }
   .req-warn.show { display: block; }
-  @media (prefers-color-scheme: dark) { .req-warn { color: #fde68a; background: #422006; } }
-  .savebar { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; border-radius: 6px; padding: 2px 8px; }
+  .badge.warn { color: var(--warn); background: var(--warn-bg); }
+  .addrow { display: flex; align-items: center; gap: 10px; margin: 14px 0; flex-wrap: wrap; }
+  .savebar { display: flex; align-items: center; gap: 14px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--border-2); }
   .savemsg { font-size: 13px; color: var(--muted); }
-  .addrow { display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; flex-wrap: wrap; }
-  .addrow input {
-    flex: 1 1 280px; padding: 9px 12px; font-size: 13.5px; border-radius: 8px;
-    border: 1px solid var(--border); background: var(--card); color: var(--fg);
-  }
-  .obj-meta { font-size: 12px; color: var(--muted); margin: 2px 0 10px; }
-  .obj-meta code { font-size: 11.5px; }
-  .warn-badge {
-    display: inline-block; font-size: 11px; font-weight: 600; color: #92400e;
-    background: #fef3c7; border-radius: 5px; padding: 1px 7px; margin-left: 6px;
-  }
-  @media (prefers-color-scheme: dark) { .warn-badge { color: #fde68a; background: #422006; } }
 
-  .steps { display: flex; flex-wrap: wrap; gap: 12px; }
-  .step { flex: 1 1 190px; }
-  .step h3 { margin: 0 0 4px; font-size: 14px; }
-  .step p { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
-  .step button { width: 100%; }
+  /* ---------- run: phase cards ---------- */
+  .phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 860px) { .phases { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 460px) { .phases { grid-template-columns: 1fr; } }
+  .phase { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--card); display: flex; flex-direction: column; transition: .18s; position: relative; overflow: hidden; }
+  .phase.running { border-color: color-mix(in srgb, var(--brand) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent); }
+  .phase.done { border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+  .phase.failed { border-color: color-mix(in srgb, var(--err) 45%, var(--border)); }
+  .phase .ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-size: 19px; margin-bottom: 12px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 16%, transparent), color-mix(in srgb, var(--brand-2) 16%, transparent)); }
+  .phase h3 { margin: 0 0 3px; font-size: 14.5px; }
+  .phase p { margin: 0 0 14px; font-size: 12px; color: var(--muted); flex: 1; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; border-radius: 20px; padding: 3px 10px; position: absolute; top: 14px; right: 14px; }
+  .chip.idle { color: var(--faint); background: var(--bg-2); }
+  .chip.running { color: var(--brand); background: color-mix(in srgb, var(--brand) 14%, transparent); }
+  .chip.done { color: var(--ok); background: var(--ok-bg); }
+  .chip.failed { color: var(--err); background: var(--err-bg); }
+  .phase .pbar { height: 6px; background: var(--bg-2); border-radius: 4px; overflow: hidden; margin-top: 4px; display: none; }
+  .phase.running .pbar, .phase.done .pbar { display: block; }
+  .phase .pfill { height: 100%; width: 0; background: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .3s ease; border-radius: 4px; }
+  .phase.running .pfill.indet { width: 40% !important; animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
 
-  .progress-wrap { margin: 8px 0 2px; }
-  .progress-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
-  .track { height: 10px; background: var(--track); border-radius: 6px; overflow: hidden; }
-  .bar { height: 100%; width: 0; background: var(--accent); transition: width .25s ease; }
-  .bar.indet { width: 35% !important; animation: slide 1.2s ease-in-out infinite; }
-  @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+  .allbtn { margin-top: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .allbtn .hint { font-size: 12px; color: var(--muted); }
 
-  .log-head { display: flex; justify-content: space-between; align-items: center; }
-  .status { font-size: 13px; font-weight: 600; }
-  .status.run { color: var(--warn); } .status.ok { color: var(--ok); } .status.err { color: var(--err); }
-  pre {
-    background: var(--logbg); color: var(--logfg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 14px; font-size: 12.5px; line-height: 1.5;
-    height: 340px; overflow: auto; margin: 10px 0 0; white-space: pre-wrap;
-  }
-  .spinner {
-    display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border);
-    border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite;
-    vertical-align: middle; margin-right: 6px;
-  }
+  /* ---------- results ---------- */
+  .results { margin-top: 4px; }
+  .result-head { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; }
+  .result-head h3 { margin: 0; font-size: 15px; }
+  .banner { display: flex; align-items: center; gap: 11px; border-radius: 13px; padding: 14px 16px; margin-bottom: 16px; font-size: 13.5px; }
+  .banner .bic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 16px; flex: none; }
+  .banner.ok { background: var(--ok-bg); color: var(--ok); } .banner.ok .bic { background: color-mix(in srgb, var(--ok) 20%, transparent); }
+  .banner.warn { background: var(--warn-bg); color: var(--warn); } .banner.warn .bic { background: color-mix(in srgb, var(--warn) 20%, transparent); }
+  .banner b { font-weight: 700; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .tile { border: 1px solid var(--border); border-radius: 13px; padding: 15px; background: var(--card-2); }
+  .tile .k { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  .tile .v { font-size: 24px; font-weight: 750; letter-spacing: -.02em; margin-top: 5px; }
+  .tile .v.small { font-size: 17px; }
+  .tile .x { font-size: 11.5px; margin-top: 4px; }
+  .tile .x.ok { color: var(--ok); } .tile .x.warn { color: var(--warn); } .tile .x.err { color: var(--err); }
+  .obj-result { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .orow { border: 1px solid var(--border); border-radius: 13px; padding: 14px 16px; background: var(--card-2); }
+  .orow .on { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+  .orow .nums { display: flex; gap: 14px; font-size: 12.5px; }
+  .orow .nums span { display: flex; flex-direction: column; }
+  .orow .nums b { font-size: 17px; font-weight: 750; }
+  .orow .nums .g { color: var(--ok); } .orow .nums .y { color: var(--warn); } .orow .nums .r { color: var(--err); }
+
+  .empty { text-align: center; padding: 46px 20px; color: var(--muted); }
+  .empty .big { font-size: 34px; margin-bottom: 10px; opacity: .5; }
+  .empty p { font-size: 13.5px; margin: 4px 0; }
+
+  /* ---------- collapsible log ---------- */
+  .logwrap { margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .logtoggle { width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 15px; background: var(--card-2); border: 0; cursor: pointer; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .logtoggle .ch { transition: .2s; } .logtoggle.open .ch { transform: rotate(90deg); }
+  pre.log { margin: 0; display: none; background: #0b0f16; color: #cdd6e4; padding: 14px 16px; font-size: 12px; line-height: 1.6; max-height: 320px; overflow: auto; white-space: pre-wrap; }
+  pre.log.open { display: block; }
+
+  /* ---------- toasts ---------- */
+  #toasts { position: fixed; top: 74px; right: 18px; z-index: 60; display: flex; flex-direction: column; gap: 10px; max-width: 340px; }
+  .toast { display: flex; align-items: flex-start; gap: 11px; background: var(--card); border: 1px solid var(--border); border-left-width: 4px;
+    border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow-lg); animation: toastin .28s cubic-bezier(.2,.9,.3,1.2); }
+  .toast.out { animation: toastout .25s forwards; }
+  .toast .ti { font-size: 16px; line-height: 1.2; }
+  .toast .tt { font-size: 13px; }
+  .toast .tt b { display: block; font-weight: 700; margin-bottom: 1px; }
+  .toast .tt small { color: var(--muted); font-size: 12px; }
+  .toast.ok { border-left-color: var(--ok); } .toast.err { border-left-color: var(--err); }
+  .toast.warn { border-left-color: var(--warn); } .toast.info { border-left-color: var(--info); }
+  @keyframes toastin { from { opacity: 0; transform: translateX(24px) scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes toastout { to { opacity: 0; transform: translateX(24px); } }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid color-mix(in srgb, var(--brand) 30%, transparent);
+    border-top-color: var(--brand); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .hidden { display: none !important; }
+  .check-pop { animation: pop .4s cubic-bezier(.2,.9,.3,1.4); }
+  @keyframes pop { 0% { transform: scale(0); } 70% { transform: scale(1.2); } 100% { transform: scale(1); } }
 </style>
 </head>
 <body>
-<header>
-  <h1>Salesforce Org Migration</h1>
-  <p>Migrate records and files from one org to another. Uses your saved logins — no passwords here.</p>
-</header>
+
+<div class="appbar">
+  <div class="in">
+    <div class="logo">🔄</div>
+    <div class="brand"><b>Org Migrator</b><span>Salesforce org-to-org: records &amp; files</span></div>
+    <div class="conn-mini">
+      <span class="c"><span class="d" id="mini-s"></span> Source</span>
+      <span class="c"><span class="d" id="mini-t"></span> Target</span>
+    </div>
+  </div>
+</div>
 
 <main>
-  <nav class="tabs">
-    <button data-tab="setup" class="active">1 · Setup</button>
-    <button data-tab="objects">2 · Objects &amp; Fields</button>
-    <button data-tab="run">3 · Run</button>
-  </nav>
+  <div class="stepper">
+    <button data-tab="setup" class="active"><span class="num">1</span><span class="lbl"><b>Setup</b><small>Connect your orgs</small></span></button>
+    <button data-tab="objects"><span class="num">2</span><span class="lbl"><b>Objects &amp; Fields</b><small>Choose what to move</small></span></button>
+    <button data-tab="run"><span class="num">3</span><span class="lbl"><b>Run</b><small>Migrate &amp; verify</small></span></button>
+  </div>
 
   <!-- ============ SETUP ============ -->
   <section data-panel="setup">
     <div class="card">
       <h2>Connections</h2>
-      <p class="hint">Check that both orgs are reachable before migrating.</p>
-      <div class="row" id="conns">
-        <div class="conn"><div class="label">Source (from)</div><div class="state"><span class="dot idle"></span>not checked</div><div class="url"></div></div>
-        <div class="conn"><div class="label">Target (to)</div><div class="state"><span class="dot idle"></span>not checked</div><div class="url"></div></div>
+      <p class="sub">Check that both orgs are reachable before migrating.</p>
+      <div class="grid2" id="conns">
+        <div class="conn-tile"><div class="role">Source — from</div><div class="st"><span class="d"></span><span class="txt">Not checked</span></div><div class="url"></div></div>
+        <div class="conn-tile"><div class="role">Target — to</div><div class="st"><span class="d"></span><span class="txt">Not checked</span></div><div class="url"></div></div>
       </div>
-      <div style="margin-top:14px;">
-        <button class="primary" id="checkConns">Check connections</button>
-      </div>
+      <div style="margin-top:16px;"><button class="btn primary" id="checkConns">Check connections</button></div>
     </div>
 
     <div class="card">
       <h2>Connect an org</h2>
-      <p class="hint">Authorize an org right here (OAuth) — no shell needed. You need a one-time External Client App per org; paste its Consumer Key. See <code>docs/OAUTH_SETUP.md</code>.</p>
-      <div class="row">
-        <div class="connect" data-which="SOURCE">
-          <div class="label">Source (from)</div>
-          <input class="cid" placeholder="Consumer Key" autocomplete="off" />
-          <input class="csec" type="password" placeholder="Consumer Secret (if any)" autocomplete="off" />
-          <label class="sbx"><input type="checkbox" class="sandbox" /> Sandbox</label>
-          <button class="ghost connectBtn">Connect Source</button>
-          <div class="connect-status"></div>
+      <p class="sub">Authorize an org right here — no shell needed. You need a one-time External Client App per org; paste its Consumer Key. See <code>docs/OAUTH_SETUP.md</code>.</p>
+      <div class="grid2">
+        <div class="connect conn-tile" data-which="SOURCE">
+          <div class="role">Source — from</div>
+          <div style="margin-top:12px;">
+            <input class="field cid" placeholder="Consumer Key" autocomplete="off" />
+            <input class="field csec" type="password" placeholder="Consumer Secret (if any)" autocomplete="off" />
+            <label class="checkline"><input type="checkbox" class="sandbox" /> This is a sandbox</label>
+            <button class="btn ghost block connectBtn">Connect Source</button>
+            <div class="connect-status"></div>
+          </div>
         </div>
-        <div class="connect" data-which="TARGET">
-          <div class="label">Target (to)</div>
-          <input class="cid" placeholder="Consumer Key" autocomplete="off" />
-          <input class="csec" type="password" placeholder="Consumer Secret (if any)" autocomplete="off" />
-          <label class="sbx"><input type="checkbox" class="sandbox" /> Sandbox</label>
-          <button class="ghost connectBtn">Connect Target</button>
-          <div class="connect-status"></div>
+        <div class="connect conn-tile" data-which="TARGET">
+          <div class="role">Target — to</div>
+          <div style="margin-top:12px;">
+            <input class="field cid" placeholder="Consumer Key" autocomplete="off" />
+            <input class="field csec" type="password" placeholder="Consumer Secret (if any)" autocomplete="off" />
+            <label class="checkline"><input type="checkbox" class="sandbox" /> This is a sandbox</label>
+            <button class="btn ghost block connectBtn">Connect Target</button>
+            <div class="connect-status"></div>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ============ OBJECTS & FIELDS ============ -->
+  <!-- ============ OBJECTS ============ -->
   <section data-panel="objects" class="hidden">
     <div class="card">
       <h2>Objects &amp; fields to migrate</h2>
-      <p class="hint">Loaded from both orgs — only fields that exist and are writable in both are shown. Your choice is saved to <code>migration.config.json</code> and used by the records migration.</p>
-      <button class="primary" id="loadObjects">Load objects</button>
-      <div id="objList" style="margin-top:16px;"></div>
-
+      <p class="sub">Loaded from both orgs — only fields that exist and are writable in both are shown. Your choice is saved and used by the records migration.</p>
+      <button class="btn primary" id="loadObjects">Load objects</button>
+      <div id="objList" style="margin-top:18px;"></div>
       <div class="addrow hidden" id="addRow">
-        <input list="allObjects" id="addInput" placeholder="Add another object (name or label)…" autocomplete="off" />
+        <input list="allObjects" id="addInput" class="field" style="flex:1 1 260px;margin:0;" placeholder="Add another object (name or label)…" autocomplete="off" />
         <datalist id="allObjects"></datalist>
-        <button class="ghost" id="addBtn">＋ Add</button>
+        <button class="btn ghost sm" id="addBtn">＋ Add</button>
         <span class="savemsg" id="addMsg"></span>
       </div>
-
       <div class="savebar hidden" id="saveBar">
-        <button class="primary" id="saveObjects">Save selection</button>
+        <button class="btn primary" id="saveObjects">Save selection</button>
         <span class="savemsg" id="saveMsg"></span>
       </div>
     </div>
@@ -220,106 +303,118 @@
   <section data-panel="run" class="hidden">
     <div class="card">
       <h2>Run the migration</h2>
-      <p class="hint">Run steps in order. Each step is resumable — re-run to retry failures.</p>
-      <div class="steps">
-        <div class="step">
-          <h3>1. Check</h3>
-          <p>Read-only: file counts &amp; sizes.</p>
-          <button class="primary" data-cmd="stats">Check orgs</button>
+      <p class="sub">Run the steps in order — each one is resumable, so you can re-run to retry anything that failed.</p>
+      <div class="phases">
+        <div class="phase" data-cmd="stats">
+          <span class="chip idle">Idle</span>
+          <div class="ic">🔍</div><h3>Check</h3><p>Read-only: file counts &amp; sizes.</p>
+          <button class="btn ghost sm block phaseBtn">Check orgs</button>
+          <div class="pbar"><div class="pfill"></div></div>
         </div>
-        <div class="step">
-          <h3>2. Records</h3>
-          <p>Migrate the selected objects.</p>
-          <button class="primary" data-cmd="records">Migrate records</button>
+        <div class="phase" data-cmd="records">
+          <span class="chip idle">Idle</span>
+          <div class="ic">🗂️</div><h3>Records</h3><p>Migrate the selected objects.</p>
+          <button class="btn ghost sm block phaseBtn">Migrate records</button>
+          <div class="pbar"><div class="pfill"></div></div>
         </div>
-        <div class="step">
-          <h3>3. Files</h3>
-          <p>Download, upload &amp; link files.</p>
-          <button class="primary" data-cmd="run">Migrate files</button>
-          <label style="display:block; margin-top:8px; font-size:12px; color:var(--muted);">
-            <input type="checkbox" id="allVersions" /> include version history
-          </label>
+        <div class="phase" data-cmd="run">
+          <span class="chip idle">Idle</span>
+          <div class="ic">📦</div><h3>Files</h3><p>Download, upload &amp; link files.</p>
+          <button class="btn ghost sm block phaseBtn">Migrate files</button>
+          <div class="pbar"><div class="pfill"></div></div>
+          <label class="checkline" style="margin:10px 0 0;font-size:11.5px;"><input type="checkbox" id="allVersions" /> Include version history</label>
         </div>
-        <div class="step">
-          <h3>4. Verify</h3>
-          <p>Final state &amp; any failures.</p>
-          <button class="primary" data-cmd="verify">Verify</button>
+        <div class="phase" data-cmd="verify">
+          <span class="chip idle">Idle</span>
+          <div class="ic">✅</div><h3>Verify</h3><p>Final state &amp; any failures.</p>
+          <button class="btn ghost sm block phaseBtn">Verify</button>
+          <div class="pbar"><div class="pfill"></div></div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <div class="log-head">
-        <strong>Output</strong>
-        <span class="status" id="status">idle</span>
-      </div>
-      <div class="progress-wrap hidden" id="progressWrap">
-        <div class="progress-meta">
-          <span id="progressLabel"></span>
-          <span id="progressEta"></span>
+      <div class="result-head"><h3 id="resultTitle">Results</h3></div>
+      <div class="results" id="results">
+        <div class="empty">
+          <div class="big">📊</div>
+          <p><b>No run yet.</b></p>
+          <p>Pick a step above — results show up here as friendly summaries.</p>
         </div>
-        <div class="track"><div class="bar" id="bar"></div></div>
       </div>
-      <pre id="log">Ready. Pick a step above.
-Tip: run steps in order (Check → Records → Files → Verify).</pre>
+      <div class="logwrap">
+        <button class="logtoggle" id="logToggle"><span class="ch">▸</span> Technical log</button>
+        <pre class="log" id="log"></pre>
+      </div>
     </div>
   </section>
 </main>
 
+<div id="toasts"></div>
+
 <script>
-/* ---------------- tabs ---------------- */
-const tabs = [...document.querySelectorAll('nav.tabs button')];
-const panels = [...document.querySelectorAll('section[data-panel]')];
-tabs.forEach((t) => t.addEventListener('click', () => {
-  tabs.forEach((x) => x.classList.toggle('active', x === t));
-  panels.forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== t.dataset.tab));
+/* ===================== helpers ===================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function fmtTime(s) { if (s < 60) return s + 's'; const m = Math.floor(s / 60), r = s % 60; return m + 'm ' + (r < 10 ? '0' : '') + r + 's'; }
+
+/* ---------- toasts ---------- */
+function toast(type, title, sub) {
+  const icons = { ok: '✅', err: '⛔', warn: '⚠️', info: 'ℹ️' };
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML = '<div class="ti">' + (icons[type] || 'ℹ️') + '</div><div class="tt"><b>' + escapeHtml(title) + '</b>' + (sub ? '<small>' + escapeHtml(sub) + '</small>' : '') + '</div>';
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 260); }, 4200);
+}
+
+/* ---------- tabs ---------- */
+$$('.stepper button').forEach((t) => t.addEventListener('click', () => {
+  $$('.stepper button').forEach((x) => x.classList.toggle('active', x === t));
+  $$('section[data-panel]').forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== t.dataset.tab));
 }));
 
-/* ---------------- setup: connections ---------------- */
-const checkBtn = document.getElementById('checkConns');
+/* ===================== setup: connections ===================== */
+const checkBtn = $('#checkConns');
 checkBtn.addEventListener('click', async () => {
-  const cards = document.querySelectorAll('#conns .conn');
-  cards.forEach((c) => {
-    c.querySelector('.state').innerHTML = '<span class="spinner"></span>checking…';
-    c.querySelector('.url').textContent = '';
-  });
+  const cards = $$('#conns .conn-tile');
+  cards.forEach((c) => { c.querySelector('.txt').innerHTML = '<span class="spinner"></span> Checking…'; c.querySelector('.url').textContent = ''; });
   checkBtn.disabled = true;
   try {
-    const r = await fetch('/api/status');
-    const data = await r.json();
-    renderConn(cards[0], data.source, data.config.sourceOrg);
-    renderConn(cards[1], data.target, data.config.targetOrg);
+    const data = await (await fetch('/api/status')).json();
+    renderConn(cards[0], data.source, data.config.sourceOrg, '#mini-s');
+    renderConn(cards[1], data.target, data.config.targetOrg, '#mini-t');
     prefillConnect(data.apps);
+    if (data.source.ok && data.target.ok) toast('ok', 'Both orgs connected', 'You can move on to Objects & Fields.');
+    else toast('warn', 'Not fully connected', 'Connect the org(s) below or check your login.');
   } catch (e) {
-    cards.forEach((c) => (c.querySelector('.state').innerHTML = '<span class="dot err"></span>error'));
+    cards.forEach((c) => (c.querySelector('.txt').textContent = 'Error'));
+    toast('err', 'Could not check connections', e.message);
   }
   checkBtn.disabled = false;
 });
-function renderConn(card, s, alias) {
-  const state = card.querySelector('.state');
-  const url = card.querySelector('.url');
+function renderConn(card, s, alias, miniSel) {
+  const dot = card.querySelector('.d'), txt = card.querySelector('.txt'), url = card.querySelector('.url');
+  const mini = $(miniSel);
   if (s && s.ok) {
-    state.innerHTML = '<span class="dot ok"></span>connected';
-    url.textContent = s.instanceUrl || (alias ? 'alias: ' + alias : '');
+    dot.className = 'd ok'; txt.textContent = 'Connected'; url.textContent = s.instanceUrl || (alias ? 'alias: ' + alias : '');
+    if (mini) mini.className = 'd ok';
   } else {
-    state.innerHTML = '<span class="dot err"></span>not connected';
-    url.textContent = (s && s.error) || '';
+    dot.className = 'd err'; txt.textContent = 'Not connected'; url.textContent = (s && s.error) || '';
+    if (mini) mini.className = 'd err';
   }
 }
 
-/* ---------------- setup: connect an org (OAuth device flow) ---------------- */
+/* ---------- connect an org (OAuth device flow) ---------- */
 function prefillConnect(apps) {
   if (!apps) return;
-  document.querySelectorAll('.connect').forEach((box) => {
+  $$('.connect').forEach((box) => {
     const saved = apps[box.dataset.which];
-    if (saved && saved.clientId && !box.querySelector('.cid').value) {
-      box.querySelector('.cid').value = saved.clientId;
-    }
+    if (saved && saved.clientId && !box.querySelector('.cid').value) box.querySelector('.cid').value = saved.clientId;
   });
 }
-document.querySelectorAll('.connectBtn').forEach((btn) => {
-  btn.addEventListener('click', () => connectOrg(btn.closest('.connect')));
-});
+$$('.connectBtn').forEach((btn) => btn.addEventListener('click', () => connectOrg(btn.closest('.connect'))));
 async function connectOrg(box) {
   const which = box.dataset.which;
   const clientId = box.querySelector('.cid').value.trim();
@@ -329,348 +424,272 @@ async function connectOrg(box) {
   const btn = box.querySelector('.connectBtn');
   if (!clientId) { statusEl.textContent = 'Enter the Consumer Key first.'; return; }
   btn.disabled = true;
-  statusEl.innerHTML = '<span class="spinner"></span> starting…';
+  statusEl.innerHTML = '<span class="spinner"></span> Starting…';
   try {
-    const r = await fetch('/api/login/start', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ which, clientId, clientSecret, sandbox }),
-    });
-    const d = await r.json();
+    const d = await (await fetch('/api/login/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ which, clientId, clientSecret, sandbox }) })).json();
     if (d.error) throw new Error(d.error);
-    statusEl.innerHTML =
-      '1. Open <a href="' + d.verificationUri + '" target="_blank" rel="noopener">' + d.verificationUri + '</a><br>' +
-      '2. Enter this code:<br><span class="code">' + d.userCode + '</span><br>' +
-      '<span class="spinner"></span> waiting for you to approve…';
+    statusEl.innerHTML = '1. Open <a href="' + d.verificationUri + '" target="_blank" rel="noopener">' + d.verificationUri + '</a><br>2. Enter this code:<br><span class="code-chip">' + d.userCode + '</span><br><span class="spinner"></span> Waiting for you to approve…';
+    toast('info', 'Approve in Salesforce', 'Enter the code shown to finish connecting ' + which.toLowerCase() + '.');
     pollConnect(which, statusEl, btn, (d.interval || 5) * 1000);
-  } catch (e) {
-    statusEl.textContent = 'Could not start: ' + e.message;
-    btn.disabled = false;
-  }
+  } catch (e) { statusEl.textContent = 'Could not start: ' + e.message; btn.disabled = false; toast('err', 'Connect failed', e.message); }
 }
 function pollConnect(which, statusEl, btn, interval) {
   const tick = async () => {
     try {
-      const r = await fetch('/api/login/poll', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ which }),
-      });
-      const d = await r.json();
+      const d = await (await fetch('/api/login/poll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ which }) })).json();
       if (d.status === 'done') {
-        statusEl.innerHTML = '<span style="color:var(--ok);font-weight:600;">Connected ✓</span> ' + (d.instanceUrl || '');
-        btn.disabled = false;
-        checkBtn.click(); // refresh the connection status cards
-        return;
+        statusEl.innerHTML = '<span style="color:var(--ok);font-weight:700;">✓ Connected</span> ' + escapeHtml(d.instanceUrl || '');
+        btn.disabled = false; toast('ok', which.charAt(0) + which.slice(1).toLowerCase() + ' connected', d.instanceUrl); checkBtn.click(); return;
       }
-      if (d.status === 'error') {
-        statusEl.textContent = 'Failed: ' + (d.error || 'unknown');
-        btn.disabled = false;
-        return;
-      }
-      setTimeout(tick, interval); // still pending
-    } catch (e) {
-      statusEl.textContent = 'Failed: ' + e.message;
-      btn.disabled = false;
-    }
+      if (d.status === 'error') { statusEl.textContent = 'Failed: ' + (d.error || 'unknown'); btn.disabled = false; toast('err', 'Connect failed', d.error); return; }
+      setTimeout(tick, interval);
+    } catch (e) { statusEl.textContent = 'Failed: ' + e.message; btn.disabled = false; }
   };
   setTimeout(tick, interval);
 }
 
-/* ---------------- objects & fields ---------------- */
-const loadBtn = document.getElementById('loadObjects');
-const objList = document.getElementById('objList');
-const saveBar = document.getElementById('saveBar');
-const saveMsg = document.getElementById('saveMsg');
-const addRow = document.getElementById('addRow');
-const addInput = document.getElementById('addInput');
-const addBtn = document.getElementById('addBtn');
-const addMsg = document.getElementById('addMsg');
-const allObjectsList = document.getElementById('allObjects');
-let objectsData = [];
-let allObjectsByLabel = {}; // "Label (Name)" -> Name, for the picker
+/* ===================== objects & fields ===================== */
+const loadBtn = $('#loadObjects'), objList = $('#objList'), saveBar = $('#saveBar'), saveMsg = $('#saveMsg');
+const addRow = $('#addRow'), addInput = $('#addInput'), addBtn = $('#addBtn'), addMsg = $('#addMsg'), allObjectsList = $('#allObjects');
+let objectsData = [], allObjectsByLabel = {};
 
 loadBtn.addEventListener('click', async () => {
-  objList.innerHTML = '<span class="spinner"></span> describing both orgs…';
-  saveBar.classList.add('hidden');
-  addRow.classList.add('hidden');
-  loadBtn.disabled = true;
+  objList.innerHTML = '<div style="color:var(--muted);font-size:13px;"><span class="spinner"></span> Describing both orgs…</div>';
+  saveBar.classList.add('hidden'); addRow.classList.add('hidden'); loadBtn.disabled = true;
   try {
-    // The default objects (with field plans) and the full picker list load together.
     const [objsRes, allRes] = await Promise.all([fetch('/api/objects'), fetch('/api/all-objects')]);
     const data = await objsRes.json();
     if (data.error) throw new Error(data.error);
     objectsData = data.objects || [];
     renderObjects();
-    saveBar.classList.remove('hidden');
-    addRow.classList.remove('hidden');
-    // Populate the "add object" picker (best-effort; the tab still works without it).
+    saveBar.classList.remove('hidden'); addRow.classList.remove('hidden');
+    toast('ok', 'Objects loaded', objectsData.length + ' object(s) ready to configure.');
     try {
-      const all = await allRes.json();
-      allObjectsList.innerHTML = '';
-      allObjectsByLabel = {};
-      (all.objects || []).forEach((o) => {
-        const key = o.label + ' (' + o.name + ')';
-        allObjectsByLabel[key] = o.name;
-        allObjectsByLabel[o.name] = o.name; // allow typing the API name directly
-        const opt = document.createElement('option');
-        opt.value = key;
-        allObjectsList.appendChild(opt);
-      });
-    } catch (_) { /* picker optional */ }
+      const all = await allRes.json(); allObjectsList.innerHTML = ''; allObjectsByLabel = {};
+      (all.objects || []).forEach((o) => { const key = o.label + ' (' + o.name + ')'; allObjectsByLabel[key] = o.name; allObjectsByLabel[o.name] = o.name; const opt = document.createElement('option'); opt.value = key; allObjectsList.appendChild(opt); });
+    } catch (_) {}
   } catch (e) {
-    objList.innerHTML = '<div style="color:var(--err);font-size:13px;">Could not load objects: ' + escapeHtml(e.message) + '<br>Check connections in the Setup tab first.</div>';
+    objList.innerHTML = '<div style="color:var(--err);font-size:13px;">Could not load objects: ' + escapeHtml(e.message) + '<br>Check connections in the Setup step first.</div>';
+    toast('err', 'Could not load objects', e.message);
   }
   loadBtn.disabled = false;
 });
 
 addBtn.addEventListener('click', async () => {
-  const raw = addInput.value.trim();
-  const name = allObjectsByLabel[raw] || raw;
+  const raw = addInput.value.trim(); const name = allObjectsByLabel[raw] || raw;
   if (!name) { addMsg.textContent = 'Type an object name.'; return; }
-  if (objectsData.some((o) => o.name === name)) {
-    addMsg.textContent = name + ' is already in the list.';
-    return;
-  }
-  addMsg.innerHTML = '<span class="spinner"></span> reading ' + escapeHtml(name) + '…';
-  addBtn.disabled = true;
+  if (objectsData.some((o) => o.name === name)) { addMsg.textContent = name + ' is already in the list.'; return; }
+  addMsg.innerHTML = '<span class="spinner"></span> Reading ' + escapeHtml(name) + '…'; addBtn.disabled = true;
   try {
     const known = objectsData.filter((o) => !o.error).map((o) => o.name).join(',');
-    const r = await fetch('/api/object?name=' + encodeURIComponent(name) + '&known=' + encodeURIComponent(known));
-    const o = await r.json();
+    const o = await (await fetch('/api/object?name=' + encodeURIComponent(name) + '&known=' + encodeURIComponent(known))).json();
     if (o.error) throw new Error(o.error);
-    objectsData.push(o);
-    renderObjects();
-    addInput.value = '';
-    addMsg.textContent = 'Added ' + o.name + '. Review its fields below, then Save selection.';
-  } catch (e) {
-    addMsg.textContent = 'Could not add: ' + e.message;
-  }
+    objectsData.push(o); renderObjects(); addInput.value = '';
+    addMsg.textContent = ''; toast('ok', 'Added ' + o.name, 'Review its fields, then Save selection.');
+  } catch (e) { addMsg.textContent = ''; toast('err', 'Could not add object', e.message); }
   addBtn.disabled = false;
 });
 
 function renderObjects() {
   objList.innerHTML = '';
   objectsData.forEach((o, idx) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'obj';
+    const wrap = document.createElement('div'); wrap.className = 'obj';
     if (o.error) {
-      wrap.innerHTML = '<div class="obj-head"><span class="name">' + o.name +
-        '</span><span class="count" style="color:var(--err)">' + escapeHtml(o.error) + '</span></div>';
-      objList.appendChild(wrap);
-      return;
+      wrap.innerHTML = '<div class="obj-head"><span class="name">' + o.name + '</span><span class="count" style="color:var(--err)">' + escapeHtml(o.error) + '</span></div>';
+      objList.appendChild(wrap); return;
     }
     const auto = o.selected === 'auto';
     const selectedSet = new Set(auto ? o.available : o.selected);
     const reqSet = new Set(o.required || []);
-
     const missingXid = o.externalIdOnTarget === false;
-    const head = document.createElement('div');
-    head.className = 'obj-head';
-    head.innerHTML =
-      '<input type="checkbox" class="enable" ' + (o.enabled ? 'checked' : '') + ' />' +
-      '<span class="name">' + o.name + '</span>' +
-      (missingXid ? '<span class="warn-badge">⚠ external Id missing on target</span>' : '') +
-      '<span class="count">' + o.available.length + ' fields</span>';
 
-    // external-Id + detected parents (informational; warns when the external
-    // Id field isn't on the target yet).
+    const head = document.createElement('div'); head.className = 'obj-head';
+    head.innerHTML = '<input type="checkbox" class="enable" ' + (o.enabled ? 'checked' : '') + ' />' +
+      '<span class="name">' + o.name + '</span>' +
+      (missingXid ? '<span class="badge warn">⚠ external Id missing</span>' : '') +
+      '<span class="count">' + o.available.length + ' fields <span class="chevron">▸</span></span>';
+
     const parentPairs = o.parents ? Object.entries(o.parents) : [];
     let meta = 'External Id: <code>' + (o.externalId || '') + '</code>';
-    if (missingXid) {
-      meta += ' <span class="warn-badge">create it on the target + add to <code>Migration_Access</code></span>';
-    }
-    if (parentPairs.length) {
-      meta += '<br>Parent remap: ' + parentPairs.map((p) => '<code>' + p[0] + '</code> → ' + p[1]).join(', ');
-    }
+    if (missingXid) meta += ' — <span style="color:var(--warn)">create it on the target &amp; add to <code>Migration_Access</code></span>';
+    if (parentPairs.length) meta += '<br>Parent remap: ' + parentPairs.map((p) => '<code>' + p[0] + '</code> → ' + p[1]).join(', ');
 
-    const body = document.createElement('div');
-    body.className = 'obj-body';
-    const modeName = 'mode-' + idx;
-    body.innerHTML =
-      (o.externalId ? '<div class="obj-meta">' + meta + '</div>' : '') +
-      '<div class="mode">' +
-        '<label><input type="radio" name="' + modeName + '" value="auto" ' + (auto ? 'checked' : '') + '> All copyable fields</label>' +
-        '<label><input type="radio" name="' + modeName + '" value="pick" ' + (auto ? '' : 'checked') + '> Choose fields</label>' +
-      '</div>' +
-      '<div class="fields ' + (auto ? 'disabled' : '') + '">' +
-        o.available.map((f) => {
-          const req = reqSet.has(f);
-          return '<label' + (req ? ' class="req"' : '') + '><input type="checkbox" class="field" value="' + f + '"' +
-            (req ? ' data-req="1"' : '') + (selectedSet.has(f) ? ' checked' : '') + '>' + f +
-            (req ? '<span class="reqmark">required</span>' : '') + '</label>';
-        }).join('') +
-      '</div>' +
-      '<div class="req-warn"></div>';
+    const body = document.createElement('div'); body.className = 'obj-body'; const modeName = 'mode-' + idx;
+    body.innerHTML = (o.externalId ? '<div class="obj-meta">' + meta + '</div>' : '') +
+      '<div class="mode"><label><input type="radio" name="' + modeName + '" value="auto" ' + (auto ? 'checked' : '') + '> All copyable fields</label>' +
+      '<label><input type="radio" name="' + modeName + '" value="pick" ' + (auto ? '' : 'checked') + '> Choose fields</label></div>' +
+      '<div class="fields ' + (auto ? 'disabled' : '') + '">' + o.available.map((f) => {
+        const req = reqSet.has(f);
+        return '<label' + (req ? ' class="req"' : '') + '><input type="checkbox" class="field-cb" value="' + f + '"' + (req ? ' data-req="1"' : '') + (selectedSet.has(f) ? ' checked' : '') + '>' + f + (req ? '<span class="reqmark">req</span>' : '') + '</label>';
+      }).join('') + '</div><div class="req-warn"></div>';
 
-    // toggle body open/closed (but not when clicking the enable checkbox)
-    head.addEventListener('click', (e) => {
-      if (e.target.classList.contains('enable')) return;
-      body.classList.toggle('open');
-    });
-    // enable/disable dims the whole object
-    head.querySelector('.enable').addEventListener('change', (e) => {
-      wrap.style.opacity = e.target.checked ? '1' : '.5';
-    });
+    head.addEventListener('click', (e) => { if (e.target.classList.contains('enable')) return; body.classList.toggle('open'); wrap.classList.toggle('open'); });
+    head.querySelector('.enable').addEventListener('change', (e) => { wrap.style.opacity = e.target.checked ? '1' : '.5'; });
     if (!o.enabled) wrap.style.opacity = '.5';
-    // auto vs pick toggles the field grid; auto always includes required fields.
-    body.querySelectorAll('input[name="' + modeName + '"]').forEach((radio) =>
-      radio.addEventListener('change', () => {
-        body.querySelector('.fields').classList.toggle('disabled', radio.value === 'auto' && radio.checked);
-        updateReqWarn(body);
-      })
-    );
-    // warn live when a required-on-target field is unchecked
-    body.querySelector('.fields').addEventListener('change', (e) => {
-      if (e.target.classList.contains('field')) updateReqWarn(body);
-    });
+    body.querySelectorAll('input[name="' + modeName + '"]').forEach((radio) => radio.addEventListener('change', () => { body.querySelector('.fields').classList.toggle('disabled', radio.value === 'auto' && radio.checked); updateReqWarn(body); }));
+    body.querySelector('.fields').addEventListener('change', (e) => { if (e.target.classList.contains('field-cb')) updateReqWarn(body); });
 
-    wrap.appendChild(head);
-    wrap.appendChild(body);
-    objList.appendChild(wrap);
+    wrap.appendChild(head); wrap.appendChild(body); objList.appendChild(wrap);
   });
 }
-
-// Shows a warning inside an object body listing any required-on-target field
-// the user has unchecked (in "Choose fields" mode). In "All copyable" mode
-// every required field is included, so the warning is hidden.
 function updateReqWarn(body) {
-  const warn = body.querySelector('.req-warn');
-  if (!warn) return;
+  const warn = body.querySelector('.req-warn'); if (!warn) return;
   const autoOn = body.querySelector('input[value="auto"]').checked;
-  const missing = autoOn ? [] :
-    [...body.querySelectorAll('.field[data-req="1"]')].filter((c) => !c.checked).map((c) => c.value);
-  if (missing.length) {
-    warn.textContent = '⚠ ' + missing.length + ' required field(s) unchecked: ' + missing.join(', ') +
-      ' — records will fail to insert without them.';
-    warn.classList.add('show');
-  } else {
-    warn.classList.remove('show');
-  }
+  const missing = autoOn ? [] : $$('.field-cb[data-req="1"]', body).filter((c) => !c.checked).map((c) => c.value);
+  if (missing.length) { warn.textContent = '⚠ ' + missing.length + ' required field(s) unchecked: ' + missing.join(', ') + ' — records will fail to insert without them.'; warn.classList.add('show'); }
+  else warn.classList.remove('show');
 }
 
-document.getElementById('saveObjects').addEventListener('click', async () => {
-  const payload = { objects: [] };
-  const wraps = objList.querySelectorAll('.obj');
+$('#saveObjects').addEventListener('click', async () => {
+  const payload = { objects: [] }; const wraps = $$('.obj', objList);
   objectsData.forEach((o, idx) => {
-    if (o.error) return;
-    const wrap = wraps[idx];
-    if (!wrap.querySelector('.enable').checked) return; // disabled object -> exclude
+    if (o.error) return; const wrap = wraps[idx];
+    if (!wrap.querySelector('.enable').checked) return;
     const mode = wrap.querySelector('input[type="radio"]:checked').value;
     const entry = { name: o.name };
-    entry.fields = mode === 'auto' ? 'auto' : [...wrap.querySelectorAll('.field:checked')].map((c) => c.value);
-    // Custom (added) objects carry their external Id + detected parents so the
-    // server can persist them; default objects are reconstructed server-side.
+    entry.fields = mode === 'auto' ? 'auto' : $$('.field-cb:checked', wrap).map((c) => c.value);
     if (o.externalId) entry.externalId = o.externalId;
     if (o.parents && Object.keys(o.parents).length) entry.parents = o.parents;
     payload.objects.push(entry);
   });
-  saveMsg.textContent = 'saving…';
+  saveMsg.textContent = 'Saving…';
   try {
-    const r = await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await r.json();
+    const data = await (await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
     if (data.error) throw new Error(data.error);
-    saveMsg.textContent = 'Saved ✓ ' + data.objects.length + ' object(s) → migration.config.json';
-  } catch (e) {
-    saveMsg.textContent = 'Save failed: ' + e.message;
-  }
+    saveMsg.textContent = ''; toast('ok', 'Selection saved', data.objects.length + ' object(s) will be migrated.');
+  } catch (e) { saveMsg.textContent = ''; toast('err', 'Save failed', e.message); }
 });
 
-/* ---------------- run: streaming + progress ---------------- */
-const log = document.getElementById('log');
-const status = document.getElementById('status');
-const runButtons = [...document.querySelectorAll('button[data-cmd]')];
-const progressWrap = document.getElementById('progressWrap');
-const bar = document.getElementById('bar');
-const progressLabel = document.getElementById('progressLabel');
-const progressEta = document.getElementById('progressEta');
-let es = null;
-let startTs = 0;
+/* ===================== run ===================== */
+const log = $('#log'), results = $('#results'), resultTitle = $('#resultTitle');
+const phaseEls = {}; $$('.phase').forEach((p) => (phaseEls[p.dataset.cmd] = p));
+const PHASE_LABELS = { stats: 'Check', records: 'Records', run: 'Files', verify: 'Verify' };
+let es = null, startTs = 0, activeCmd = null, buffer = '';
 
-function setStatus(text, cls) { status.textContent = text; status.className = 'status ' + (cls || ''); }
-function append(line) { log.textContent += '\n' + line; log.scrollTop = log.scrollHeight; }
+$('#logToggle').addEventListener('click', () => { $('#logToggle').classList.toggle('open'); log.classList.toggle('open'); });
+$$('.phaseBtn').forEach((b) => b.addEventListener('click', () => run(b.closest('.phase').dataset.cmd)));
 
-function resetProgress(show) {
-  progressWrap.classList.toggle('hidden', !show);
-  bar.style.width = '0';
-  bar.classList.add('indet'); // indeterminate until we see a fraction
-  progressLabel.textContent = show ? 'working…' : '';
-  progressEta.textContent = '';
+function setChip(cmd, state, text) {
+  const chip = phaseEls[cmd].querySelector('.chip');
+  chip.className = 'chip ' + state; chip.textContent = text;
+  phaseEls[cmd].classList.remove('running', 'done', 'failed');
+  if (state !== 'idle') phaseEls[cmd].classList.add(state);
 }
-function updateProgress(done, total) {
-  bar.classList.remove('indet');
-  const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
-  bar.style.width = pct + '%';
-  progressLabel.textContent = done + ' / ' + total + '  (' + pct + '%)';
-  const elapsed = (Date.now() - startTs) / 1000;
-  if (done > 0 && done < total && elapsed > 1) {
-    const eta = Math.round((elapsed / done) * (total - done));
-    progressEta.textContent = 'ETA ' + fmtTime(eta);
-  } else if (done >= total && total > 0) {
-    progressEta.textContent = 'done in ' + fmtTime(Math.round(elapsed));
-  }
+function setFill(cmd, pct, indet) {
+  const fill = phaseEls[cmd].querySelector('.pfill');
+  fill.classList.toggle('indet', !!indet);
+  if (!indet) fill.style.width = pct + '%';
 }
-function fmtTime(s) {
-  if (s < 60) return s + 's';
-  const m = Math.floor(s / 60), r = s % 60;
-  return m + 'm ' + (r < 10 ? '0' : '') + r + 's';
-}
-
-// Pull "(done/total)" progress out of a log line; return [done,total] or null.
-function parseFraction(line) {
-  const m = line.match(/\((\d+)\s*\/\s*(\d+)\)/);
-  if (m) return [parseInt(m[1], 10), parseInt(m[2], 10)];
-  return null;
-}
-
-runButtons.forEach((b) => b.addEventListener('click', () => run(b.dataset.cmd)));
+function parseFraction(line) { const m = line.match(/\((\d+)\s*\/\s*(\d+)\)/); return m ? [+m[1], +m[2]] : null; }
 
 function run(cmd) {
   if (es) es.close();
-  runButtons.forEach((b) => (b.disabled = true));
-  log.textContent = '$ ' + cmd;
-  setStatus('running…', 'run');
-  startTs = Date.now();
-  resetProgress(cmd === 'records' || cmd === 'run');
+  $$('.phaseBtn').forEach((b) => (b.disabled = true));
+  activeCmd = cmd; buffer = ''; log.textContent = '$ ' + cmd + '\n'; startTs = Date.now();
+  setChip(cmd, 'running', 'Running'); setFill(cmd, 0, true);
+  resultTitle.innerHTML = '<span class="spinner"></span> ' + PHASE_LABELS[cmd] + ' running…';
+  results.innerHTML = '<div class="empty"><div class="big"><span class="spinner" style="width:26px;height:26px;border-width:3px;"></span></div><p><b>' + PHASE_LABELS[cmd] + ' is running…</b></p><p>Live details appear in the technical log below.</p></div>';
+  toast('info', PHASE_LABELS[cmd] + ' started', 'This can take a while for large data.');
 
   let qs = '/run?cmd=' + encodeURIComponent(cmd);
-  if (cmd === 'run' && document.getElementById('allVersions').checked) qs += '&allVersions=1';
+  if (cmd === 'run' && $('#allVersions').checked) qs += '&allVersions=1';
   es = new EventSource(qs);
   es.addEventListener('log', (e) => {
-    const line = JSON.parse(e.data);
-    append(line);
+    const line = JSON.parse(e.data); buffer += line + '\n';
+    log.textContent += line + '\n'; log.scrollTop = log.scrollHeight;
     const frac = parseFraction(line);
-    if (frac) updateProgress(frac[0], frac[1]);
+    if (frac) setFill(cmd, Math.round((frac[0] / frac[1]) * 100), false);
   });
   es.addEventListener('done', (e) => {
-    const code = JSON.parse(e.data).code;
-    setStatus(code === 0 ? 'done ✓' : 'failed (exit ' + code + ')', code === 0 ? 'ok' : 'err');
-    if (!progressWrap.classList.contains('hidden')) {
-      bar.classList.remove('indet');
-      bar.style.width = '100%';
-      if (code === 0) {
-        const elapsed = Math.round((Date.now() - startTs) / 1000);
-        progressLabel.textContent = 'complete';
-        progressEta.textContent = 'finished in ' + fmtTime(elapsed);
-      } else {
-        progressLabel.textContent = 'stopped';
-      }
-    }
-    runButtons.forEach((b) => (b.disabled = false));
+    const code = JSON.parse(e.data).code; const ok = code === 0;
+    $$('.phaseBtn').forEach((b) => (b.disabled = false));
+    setFill(cmd, 100, false);
+    const hadFailure = /failed [1-9]|FAILED |Failed:/.test(buffer);
+    setChip(cmd, ok && !hadFailure ? 'done' : (ok ? 'done' : 'failed'), ok ? 'Done' : 'Failed');
+    renderResults(cmd, buffer, ok, hadFailure);
+    if (!ok) toast('err', PHASE_LABELS[cmd] + ' failed', 'Exit code ' + code + ' — see the technical log.');
+    else if (hadFailure) toast('warn', PHASE_LABELS[cmd] + ' finished with issues', 'Some records/files did not go through.');
+    else toast('ok', PHASE_LABELS[cmd] + ' complete', 'Finished in ' + fmtTime(Math.round((Date.now() - startTs) / 1000)) + '.');
     es.close(); es = null;
   });
-  es.onerror = () => {
-    setStatus('connection lost', 'err');
-    runButtons.forEach((b) => (b.disabled = false));
-    if (es) { es.close(); es = null; }
-  };
+  es.onerror = () => { $$('.phaseBtn').forEach((b) => (b.disabled = false)); setChip(cmd, 'failed', 'Failed'); toast('err', 'Connection lost', 'The run stream was interrupted.'); if (es) { es.close(); es = null; } };
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* ---------- result parsing → friendly tiles ---------- */
+function tile(k, v, extra, cls, small) {
+  return '<div class="tile"><div class="k">' + k + '</div><div class="v' + (small ? ' small' : '') + '">' + v + '</div>' + (extra ? '<div class="x ' + (cls || '') + '">' + extra + '</div>' : '') + '</div>';
 }
+function fmtBytes(b) { if (b == null) return '—'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, n = b; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return (n < 10 && i ? n.toFixed(1) : Math.round(n)) + ' ' + u[i]; }
+
+function renderResults(cmd, text, ok, hadFailure) {
+  const elapsed = fmtTime(Math.round((Date.now() - startTs) / 1000));
+  resultTitle.textContent = PHASE_LABELS[cmd] + ' results';
+  let html = '';
+
+  // Banner
+  if (!ok) html += banner('warn', 'Run did not finish cleanly', 'Check the technical log below.');
+  else if (hadFailure) html += banner('warn', 'Finished with some issues', 'A few records or files were skipped or failed — details below.');
+  else html += banner('ok', PHASE_LABELS[cmd] + ' completed successfully', 'Everything went through in ' + elapsed + '.');
+
+  // Issues written to CSV?
+  const issues = text.match(/(\d+) issue\(s\) written to (.+)/);
+  if (issues) html += banner('warn', issues[1] + ' issue(s) reported', 'Saved to a CSV report: ' + issues[2].trim());
+
+  if (cmd === 'records') html += recordsTiles(text);
+  else if (cmd === 'stats') html += statsTiles(text);
+  else html += stateTiles(text); // run / verify
+
+  results.innerHTML = html || '<div class="empty"><p>Done. See the technical log for details.</p></div>';
+}
+function banner(type, title, sub) {
+  const ic = { ok: '🎉', warn: '⚠️', err: '⛔' }[type] || 'ℹ️';
+  return '<div class="banner ' + type + '"><div class="bic ' + (type === 'ok' ? 'check-pop' : '') + '">' + ic + '</div><div><b>' + escapeHtml(title) + '</b><br><span style="opacity:.85">' + escapeHtml(sub) + '</span></div></div>';
+}
+function recordsTiles(text) {
+  const rows = [...text.matchAll(/^\s*(\w+): (\d+) upserted, (\d+) skipped[^,]*, (\d+) failed/gm)];
+  if (!rows.length) return '';
+  let h = '<div class="obj-result">';
+  for (const m of rows) {
+    const [, name, up, sk, fl] = m;
+    h += '<div class="orow"><div class="on">' + name + '</div><div class="nums">' +
+      '<span><b class="g">' + up + '</b>upserted</span>' +
+      (+sk ? '<span><b class="y">' + sk + '</b>skipped</span>' : '') +
+      (+fl ? '<span><b class="r">' + fl + '</b>failed</span>' : '<span><b>0</b>failed</span>') +
+      '</div></div>';
+  }
+  return h + '</div>';
+}
+function statsTiles(text) {
+  const g = (re) => { const m = text.match(re); return m ? m[1] : null; };
+  const latest = g(/Latest versions only\s*:\s*(\d+) files/);
+  const latestSize = g(/Latest versions only\s*:\s*\d+ files, ([\d.]+\s?\w+)/);
+  const allV = g(/All versions\s*:\s*(\d+) versions/);
+  const largest = g(/Largest single file\s*:\s*([\d.]+\s?\w+)/);
+  const over37 = g(/over 37\s?MB|> ?37\s?MB[^:]*:\s*(\d+)/i);
+  const over2g = g(/> ?2\s?GB[^:]*:\s*(\d+)/i);
+  let h = '<div class="tiles">';
+  if (latest != null) h += tile('Files (latest)', latest, latestSize || '', '');
+  if (allV != null) h += tile('All versions', allV, '', '');
+  if (largest) h += tile('Largest file', largest, '', '', true);
+  if (over37 != null) h += tile('Over 37 MB', over37, +over37 ? 'need this tool' : 'all small', +over37 ? 'warn' : 'ok');
+  if (over2g != null) h += tile('Over 2 GB', over2g, +over2g ? 'API limit' : 'all fit', +over2g ? 'err' : 'ok');
+  return h + '</div>';
+}
+function stateTiles(text) {
+  const docs = (text.match(/Documents\s*:\s*(\d+)/) || [])[1];
+  const vm = text.match(/Versions\s*:.*?uploaded (\d+), failed (\d+)/);
+  const lm = text.match(/Links\s*:.*?linked (\d+), unmapped (\d+), failed (\d+)/);
+  const bm = text.match(/Bytes\s*:\s*total ([\d.]+\s?\w+), downloaded [\d.]+\s?\w+, uploaded ([\d.]+\s?\w+)/);
+  let h = '<div class="tiles">';
+  if (docs != null) h += tile('Documents', docs, '', '');
+  if (vm) h += tile('Versions uploaded', vm[1], +vm[2] ? vm[2] + ' failed' : 'none failed', +vm[2] ? 'err' : 'ok');
+  if (lm) h += tile('Links rebuilt', lm[1], (+lm[2] ? lm[2] + ' unmapped' : '') + (+lm[3] ? ' · ' + lm[3] + ' failed' : '') || 'all linked', (+lm[2] || +lm[3]) ? 'warn' : 'ok');
+  if (bm) h += tile('Uploaded', bm[2], 'of ' + bm[1] + ' total', '', true);
+  return h + '</div>';
+}
+
+/* auto-check connections on first load for a friendlier start */
+window.addEventListener('load', () => { setTimeout(() => checkBtn.click(), 300); });
 </script>
 </body>
 </html>
