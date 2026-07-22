@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.3.0] — 2026-07-22
+
+- **Add any object from the web UI.** The Objects & Fields tab now has a
+  searchable picker of every migratable object in the source org. Adding one
+  shows its copyable fields, its `Legacy_<Object>_Id__c` external Id (with a
+  warning when that field isn't on the target yet), and auto-detects lookups
+  that should remap to already-selected parents. The saved config is
+  topologically ordered so parents come before children.
+- **Fix: concurrent OAuth refreshes no longer revoke the token.** External
+  Client Apps rotate the refresh token on use; two refreshes racing on the
+  same stored token tripped Salesforce's reuse detection and revoked the whole
+  token family. Concurrent callers now share one in-flight refresh per org.
+
 ## [1.2.0] — 2026-07-22
 
 - **Partial-failure reports.** Every phase (records, download, upload, link)
