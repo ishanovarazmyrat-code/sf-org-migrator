@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Salesforce Org-to-Org Migration</title>
+<meta name="description" content="Move records and their files from one Salesforce org to another — up to 2 GB per file, resumable, with relationships intact." />
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #0f172a; --muted: #5b6b82;
+    --card: #f8fafc; --border: #e2e8f0;
+    --accent: #2563eb; --accent2: #7c3aed; --accent-fg: #ffffff;
+    --code-bg: #0d1117; --code-fg: #e6edf3;
+    --ok: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0f16; --fg: #e6edf3; --muted: #94a3b8;
+      --card: #131a24; --border: #26313f;
+      --accent: #3b82f6; --accent2: #a78bfa;
+      --code-bg: #0a0e14;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 22px; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; gap: 20px; height: 56px; }
+  nav .brand { font-weight: 700; font-size: 15px; }
+  nav .links { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
+  nav .links a { color: var(--muted); }
+  nav .links a:hover { color: var(--fg); text-decoration: none; }
+  @media (max-width: 640px) { nav .links a.hide-sm { display: none; } }
+
+  /* hero */
+  .hero { padding: 76px 0 64px; text-align: center; }
+  .hero h1 {
+    font-size: clamp(30px, 5.4vw, 50px); line-height: 1.1; margin: 0 0 18px;
+    letter-spacing: -0.02em; font-weight: 800;
+    background: linear-gradient(100deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lead {
+    font-size: clamp(16px, 2.4vw, 20px); color: var(--muted);
+    max-width: 640px; margin: 0 auto 30px;
+  }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 10px; font-size: 15px;
+    font-weight: 600; border: 1px solid transparent;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); }
+  .btn.primary:hover { filter: brightness(1.08); text-decoration: none; }
+  .btn.ghost { border-color: var(--border); color: var(--fg); }
+  .btn.ghost:hover { border-color: var(--accent); text-decoration: none; }
+
+  .pills { display: flex; gap: 10px 22px; justify-content: center; flex-wrap: wrap; margin-top: 34px; font-size: 13.5px; color: var(--muted); }
+  .pills span { display: inline-flex; align-items: center; gap: 7px; }
+  .pills span::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+
+  /* sections */
+  section { padding: 52px 0; border-top: 1px solid var(--border); }
+  section h2 { font-size: clamp(22px, 3.4vw, 30px); margin: 0 0 8px; letter-spacing: -0.01em; }
+  section .sub { color: var(--muted); margin: 0 0 30px; font-size: 15.5px; }
+
+  /* capability grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .feature {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 22px;
+  }
+  .feature .ic {
+    width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+    margin-bottom: 14px; font-size: 19px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent2) 22%, transparent));
+  }
+  .feature h3 { margin: 0 0 6px; font-size: 16px; }
+  .feature p { margin: 0; font-size: 14px; color: var(--muted); }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; counter-reset: step; }
+  .stepcard { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 22px; position: relative; }
+  .stepcard .n {
+    counter-increment: step; font-size: 13px; font-weight: 700; color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 8px; margin-bottom: 12px;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+  .stepcard .n::before { content: counter(step); }
+  .stepcard h3 { margin: 0 0 5px; font-size: 15.5px; }
+  .stepcard p { margin: 0; font-size: 13.5px; color: var(--muted); }
+
+  /* code */
+  .codeblock { position: relative; margin: 0 0 18px; }
+  .codeblock pre {
+    background: var(--code-bg); color: var(--code-fg); border-radius: 12px;
+    padding: 18px 20px; overflow-x: auto; font-size: 13.5px; line-height: 1.7; margin: 0;
+    border: 1px solid var(--border);
+  }
+  .codeblock .cmt { color: #7d8590; }
+  .copy {
+    position: absolute; top: 10px; right: 10px; font-size: 12px; padding: 5px 10px;
+    border-radius: 7px; border: 1px solid #30363d; background: #21262d; color: #c9d1d9;
+    cursor: pointer;
+  }
+  .copy:hover { background: #30363d; }
+  .install-note { font-size: 13.5px; color: var(--muted); margin: -6px 0 22px; }
+  .install-note a { font-weight: 600; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; }
+  footer .links { display: flex; gap: 22px; flex-wrap: wrap; }
+  footer .sp { margin-left: auto; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="brand">⛅ Org-to-Org Migration</span>
+    <span class="links">
+      <a href="#capabilities">Capabilities</a>
+      <a href="#how" class="hide-sm">How it works</a>
+      <a href="#start">Quick start</a>
+      <a href="https://github.com/ishanovarazmyrat-code/sf-org-migrator">GitHub</a>
+    </span>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>Move a Salesforce org's records and files to another org</h1>
+    <p class="lead">Records, their attached files, and the links between them — carried across, up to 2&nbsp;GB per file, and safe to resume if anything is interrupted.</p>
+    <div class="cta">
+      <a class="btn primary" href="#start">Get started</a>
+      <a class="btn ghost" href="https://github.com/ishanovarazmyrat-code/sf-org-migrator">View on GitHub</a>
+    </div>
+    <div class="pills">
+      <span>Up to 2&nbsp;GB per file</span>
+      <span>Resumable</span>
+      <span>Relationships intact</span>
+      <span>Passwordless OAuth</span>
+    </div>
+  </div>
+</header>
+
+<section id="capabilities">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="sub">Everything needed to lift records and their files out of one org and land them in another.</p>
+    <div class="grid">
+      <div class="feature">
+        <div class="ic">🗂️</div>
+        <h3>Records and files together</h3>
+        <p>Account, Contact, Opportunity and Case out of the box; custom objects with a little config. Files travel with the records they belong to.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">📦</div>
+        <h3>Large files</h3>
+        <p>Files up to 2&nbsp;GB each. Binaries stream to disk and upload in multipart chunks, so a big attachment never has to fit in memory.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🔁</div>
+        <h3>Resumable</h3>
+        <p>Every phase is re-runnable. Progress is tracked in a manifest, so a re-run picks up exactly where it stopped and retries only what failed.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🔗</div>
+        <h3>Relationships preserved</h3>
+        <p>File-to-record links are rebuilt in the target org, resolving each source record to its new target record through external-ID fields.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🕑</div>
+        <h3>Version history (optional)</h3>
+        <p>Migrate just the latest version of each file, or the full version history in order — your choice per run.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🔐</div>
+        <h3>Passwordless login</h3>
+        <p>Authorize each org once through an OAuth device flow. No passwords are stored, and it works the same on a laptop or an unattended VM.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🧭</div>
+        <h3>Automatic field mapping</h3>
+        <p>Copies the fields both orgs share and can write, maps record types by name, and handles state/country codes so inserts don't fail on mismatched values.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🖥️</div>
+        <h3>Terminal or web UI</h3>
+        <p>Drive it from the command line, or open a local web UI with buttons, a live log, and a progress bar. Same engine underneath.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="sub">Four steps, each resumable. Run them in order the first time; re-run any of them to retry.</p>
+    <div class="steps">
+      <div class="stepcard">
+        <div class="n"></div>
+        <h3>Connect</h3>
+        <p>Authorize the source and target orgs, then run a preflight check that tells you what's ready and what's missing.</p>
+      </div>
+      <div class="stepcard">
+        <div class="n"></div>
+        <h3>Records</h3>
+        <p>Copy the selected objects into the target, upserting on an external ID and re-pointing lookups to the migrated parents.</p>
+      </div>
+      <div class="stepcard">
+        <div class="n"></div>
+        <h3>Files</h3>
+        <p>Download every file from the source, upload it into the target, and rebuild the links back to the right records.</p>
+      </div>
+      <div class="stepcard">
+        <div class="n"></div>
+        <h3>Verify</h3>
+        <p>See the final counts — documents, versions, and links — plus any failures, so you know the migration is complete.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <h2>Quick start</h2>
+    <p class="sub">Prepare the target org once, then run the tool.</p>
+
+    <h3 style="font-size:16px;margin:0 0 6px;">1 · Install the package in your target org</h3>
+    <p class="install-note">One click adds the fields, classes, custom setting and permission set the migration needs:<br>
+      <a href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxfIAE">Install into a Salesforce org →</a>
+      &nbsp;then choose <em>Install for All Users</em>.</p>
+
+    <h3 style="font-size:16px;margin:0 0 6px;">2 · Run the tool</h3>
+    <div class="codeblock">
+      <button class="copy" data-copy>Copy</button>
+      <pre><span class="cmt"># install once, then run from any folder</span>
+npm install -g sf-org-migrator
+
+sf-org-migrator login source   <span class="cmt"># authorize each org (OAuth, no password)</span>
+sf-org-migrator login target
+sf-org-migrator doctor         <span class="cmt"># preflight: what's ready, what's missing</span>
+sf-org-migrator migrate        <span class="cmt"># records + files, end to end</span></pre>
+    </div>
+
+    <p class="install-note">Prefer buttons over the terminal? Start the local web UI — setup, object and field selection, and a live progress view:</p>
+    <div class="codeblock">
+      <button class="copy" data-copy>Copy</button>
+      <pre>sf-org-migrator ui   <span class="cmt"># then open http://localhost:4599</span></pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>⛅ Salesforce Org-to-Org Migration</span>
+    <span class="sp"></span>
+    <span class="links">
+      <a href="https://github.com/ishanovarazmyrat-code/sf-org-migrator">GitHub</a>
+      <a href="https://github.com/ishanovarazmyrat-code/sf-org-migrator/blob/main/GUIDE_A_LOCAL_MACHINE.md">Local guide</a>
+      <a href="https://github.com/ishanovarazmyrat-code/sf-org-migrator/blob/main/GUIDE_B_VIRTUAL_MACHINE.md">VM guide</a>
+      <a href="https://github.com/ishanovarazmyrat-code/sf-org-migrator/blob/main/docs/OAUTH_SETUP.md">OAuth setup</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const code = btn.parentElement.querySelector('pre').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        const old = btn.textContent;
+        btn.textContent = 'Copied ✓';
+        setTimeout(() => (btn.textContent = old), 1400);
+      });
+    });
+  });
+</script>
+</body>
+</html>
