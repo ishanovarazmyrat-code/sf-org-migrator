@@ -161,6 +161,7 @@ async function apiObjects(res) {
         name,
         externalId: def.externalId,
         available: plan.fields, // copyable field names
+        required: plan.required || [], // required-on-target subset
         // "auto" (all copyable) unless the user saved an explicit list.
         selected:
           savedEntry && Array.isArray(savedEntry.fields) ? savedEntry.fields : 'auto',
@@ -241,6 +242,7 @@ async function apiObject(res, url) {
     externalIdOnTarget,
     parents,
     available: plan.fields,
+    required: plan.required || [],
     selected: 'auto',
     enabled: true,
     custom: !!srcDesc.custom,
