@@ -62,6 +62,21 @@
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
   .dot.ok { background: var(--ok); } .dot.err { background: var(--err); } .dot.idle { background: var(--muted); }
 
+  .connect { flex: 1 1 300px; border: 1px solid var(--border); border-radius: 9px; padding: 14px; }
+  .connect .label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 8px; }
+  .connect input.cid, .connect input.csec {
+    width: 100%; box-sizing: border-box; padding: 8px 10px; margin-bottom: 8px; font-size: 13px;
+    border-radius: 7px; border: 1px solid var(--border); background: var(--card); color: var(--fg);
+  }
+  .connect .sbx { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin: 0 0 10px; }
+  .connect .connectBtn { width: 100%; }
+  .connect-status { font-size: 12.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .connect-status a { font-weight: 600; }
+  .connect-status .code {
+    display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 15px; font-weight: 700;
+    letter-spacing: .12em; background: var(--track); border-radius: 6px; padding: 3px 9px; margin: 4px 0;
+  }
+
   .obj { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 12px; overflow: hidden; }
   .obj-head {
     display: flex; align-items: center; gap: 10px; padding: 12px 14px;
@@ -152,6 +167,29 @@
       </div>
       <div style="margin-top:14px;">
         <button class="primary" id="checkConns">Check connections</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Connect an org</h2>
+      <p class="hint">Authorize an org right here (OAuth) — no shell needed. You need a one-time External Client App per org; paste its Consumer Key. See <code>docs/OAUTH_SETUP.md</code>.</p>
+      <div class="row">
+        <div class="connect" data-which="SOURCE">
+          <div class="label">Source (from)</div>
+          <input class="cid" placeholder="Consumer Key" autocomplete="off" />
+          <input class="csec" type="password" placeholder="Consumer Secret (if any)" autocomplete="off" />
+          <label class="sbx"><input type="checkbox" class="sandbox" /> Sandbox</label>
+          <button class="ghost connectBtn">Connect Source</button>
+          <div class="connect-status"></div>
+        </div>
+        <div class="connect" data-which="TARGET">
+          <div class="label">Target (to)</div>
+          <input class="cid" placeholder="Consumer Key" autocomplete="off" />
+          <input class="csec" type="password" placeholder="Consumer Secret (if any)" autocomplete="off" />
+          <label class="sbx"><input type="checkbox" class="sandbox" /> Sandbox</label>
+          <button class="ghost connectBtn">Connect Target</button>
+          <div class="connect-status"></div>
+        </div>
       </div>
     </div>
   </section>
@@ -251,6 +289,7 @@ checkBtn.addEventListener('click', async () => {
     const data = await r.json();
     renderConn(cards[0], data.source, data.config.sourceOrg);
     renderConn(cards[1], data.target, data.config.targetOrg);
+    prefillConnect(data.apps);
   } catch (e) {
     cards.forEach((c) => (c.querySelector('.state').innerHTML = '<span class="dot err"></span>error'));
   }
@@ -266,6 +305,74 @@ function renderConn(card, s, alias) {
     state.innerHTML = '<span class="dot err"></span>not connected';
     url.textContent = (s && s.error) || '';
   }
+}
+
+/* ---------------- setup: connect an org (OAuth device flow) ---------------- */
+function prefillConnect(apps) {
+  if (!apps) return;
+  document.querySelectorAll('.connect').forEach((box) => {
+    const saved = apps[box.dataset.which];
+    if (saved && saved.clientId && !box.querySelector('.cid').value) {
+      box.querySelector('.cid').value = saved.clientId;
+    }
+  });
+}
+document.querySelectorAll('.connectBtn').forEach((btn) => {
+  btn.addEventListener('click', () => connectOrg(btn.closest('.connect')));
+});
+async function connectOrg(box) {
+  const which = box.dataset.which;
+  const clientId = box.querySelector('.cid').value.trim();
+  const clientSecret = box.querySelector('.csec').value.trim();
+  const sandbox = box.querySelector('.sandbox').checked;
+  const statusEl = box.querySelector('.connect-status');
+  const btn = box.querySelector('.connectBtn');
+  if (!clientId) { statusEl.textContent = 'Enter the Consumer Key first.'; return; }
+  btn.disabled = true;
+  statusEl.innerHTML = '<span class="spinner"></span> starting…';
+  try {
+    const r = await fetch('/api/login/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ which, clientId, clientSecret, sandbox }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    statusEl.innerHTML =
+      '1. Open <a href="' + d.verificationUri + '" target="_blank" rel="noopener">' + d.verificationUri + '</a><br>' +
+      '2. Enter this code:<br><span class="code">' + d.userCode + '</span><br>' +
+      '<span class="spinner"></span> waiting for you to approve…';
+    pollConnect(which, statusEl, btn, (d.interval || 5) * 1000);
+  } catch (e) {
+    statusEl.textContent = 'Could not start: ' + e.message;
+    btn.disabled = false;
+  }
+}
+function pollConnect(which, statusEl, btn, interval) {
+  const tick = async () => {
+    try {
+      const r = await fetch('/api/login/poll', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ which }),
+      });
+      const d = await r.json();
+      if (d.status === 'done') {
+        statusEl.innerHTML = '<span style="color:var(--ok);font-weight:600;">Connected ✓</span> ' + (d.instanceUrl || '');
+        btn.disabled = false;
+        checkBtn.click(); // refresh the connection status cards
+        return;
+      }
+      if (d.status === 'error') {
+        statusEl.textContent = 'Failed: ' + (d.error || 'unknown');
+        btn.disabled = false;
+        return;
+      }
+      setTimeout(tick, interval); // still pending
+    } catch (e) {
+      statusEl.textContent = 'Failed: ' + e.message;
+      btn.disabled = false;
+    }
+  };
+  setTimeout(tick, interval);
 }
 
 /* ---------------- objects & fields ---------------- */

@@ -36,6 +36,7 @@ const ACCESS_KEY = process.env.UI_ACCESS_KEY || '';
 const HOSTED = ACCESS_KEY.length > 0;
 const BIND_HOST = process.env.UI_HOST || (HOSTED ? '0.0.0.0' : '127.0.0.1');
 const sessions = new Set(); // valid session ids (in-memory; cleared on restart)
+const pendingLogins = {};   // prefix -> in-progress device-flow login state
 
 // Only these commands can be triggered from the UI (no destructive/interactive ones).
 const ALLOWED = new Set(['stats', 'records', 'run', 'verify']);
@@ -190,11 +191,75 @@ async function apiStatus(res) {
   };
   const [source, target] = await Promise.all([probe('SOURCE'), probe('TARGET')]);
   const cfg = readConfig();
+  const apps = cfg.apps || {};
   sendJson(res, 200, {
     source,
     target,
     config: { sourceOrg: cfg.sourceOrg || null, targetOrg: cfg.targetOrg || null },
+    // Saved Consumer Keys (not secrets) so the Connect form can prefill.
+    apps: {
+      SOURCE: { clientId: (apps.SOURCE && apps.SOURCE.clientId) || '' },
+      TARGET: { clientId: (apps.TARGET && apps.TARGET.clientId) || '' },
+    },
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* /api/login/start + /api/login/poll - browser OAuth device flow      */
+/* ------------------------------------------------------------------ */
+async function apiLoginStart(req, res) {
+  const oauth = require('./lib/oauth');
+  const body = await readBody(req);
+  const which = String(body.which || '').toUpperCase();
+  if (which !== 'SOURCE' && which !== 'TARGET') {
+    return sendJson(res, 400, { error: 'which must be SOURCE or TARGET' });
+  }
+  const clientId = String(body.clientId || '').trim();
+  const clientSecret = String(body.clientSecret || '').trim();
+  if (!clientId) return sendJson(res, 400, { error: 'Consumer Key is required' });
+  const host = body.sandbox ? 'test.salesforce.com' : 'login.salesforce.com';
+  try {
+    const start = await oauth.startDevice(clientId, clientSecret, host);
+    pendingLogins[which] = { clientId, clientSecret, host, deviceCode: start.device_code };
+    sendJson(res, 200, {
+      verificationUri: start.verification_uri,
+      userCode: start.user_code,
+      interval: start.interval || 5,
+    });
+  } catch (e) {
+    sendJson(res, 400, { error: String((e && e.message) || e) });
+  }
+}
+
+async function apiLoginPoll(req, res) {
+  const oauth = require('./lib/oauth');
+  const body = await readBody(req);
+  const which = String(body.which || '').toUpperCase();
+  const p = pendingLogins[which];
+  if (!p) return sendJson(res, 400, { status: 'error', error: 'no login in progress' });
+  try {
+    const r = await oauth.pollDevice(p.clientId, p.clientSecret, p.host, p.deviceCode);
+    if (r.status === 'done') {
+      const t = r.token;
+      oauth.saveAuth(which, {
+        clientId: p.clientId,
+        clientSecret: p.clientSecret,
+        refreshToken: t.refresh_token,
+        instanceUrl: t.instance_url,
+      });
+      // Remember the Consumer Key so next time the form is prefilled.
+      const cfg = readConfig();
+      cfg.apps = cfg.apps || {};
+      cfg.apps[which] = { clientId: p.clientId, clientSecret: p.clientSecret };
+      writeConfig(cfg);
+      delete pendingLogins[which];
+      return sendJson(res, 200, { status: 'done', instanceUrl: t.instance_url });
+    }
+    if (r.status === 'error') delete pendingLogins[which];
+    sendJson(res, 200, r);
+  } catch (e) {
+    sendJson(res, 200, { status: 'error', error: String((e && e.message) || e) });
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -456,6 +521,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/config' && req.method === 'POST') {
       return await apiSaveConfig(req, res);
     }
+    if (url.pathname === '/api/login/start' && req.method === 'POST') return await apiLoginStart(req, res);
+    if (url.pathname === '/api/login/poll' && req.method === 'POST') return await apiLoginPoll(req, res);
     if (url.pathname === '/run') return runCommand(req, res, url);
     res.writeHead(404);
     res.end('not found');
