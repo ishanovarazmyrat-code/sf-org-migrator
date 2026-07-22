@@ -36,6 +36,14 @@ const fs = require('fs');
 const path = require('path');
 const sf = require('./lib/sf');
 const mf = require('./lib/manifest');
+const report = require('./lib/report');
+
+/** Writes a failure CSV for a phase and prints a one-line pointer. */
+function reportFailures(phase, rows) {
+  const file = report.writeReport(WORK_DIR, phase, rows);
+  if (file) console.log(`  ⚠ ${rows.length} issue(s) written to ${file}`);
+  return file;
+}
 
 // State lives in the CURRENT working directory (so a globally-installed CLI
 // keeps each project's work/, .auth/, config where you run it — like git).
@@ -301,6 +309,13 @@ async function cmdDownload(opts) {
 
   mf.save(WORK_DIR, manifest);
   console.log(`\n  Downloaded: ${done}, failed: ${failed}. Re-run this command to retry failures.`);
+  if (failed > 0) {
+    const rows = [];
+    for (const doc of Object.values(manifest.docs))
+      for (const v of doc.versions)
+        if (v.state === 'failed') rows.push({ phase: 'download', object: 'ContentVersion', sourceId: v.id, reason: v.error });
+    reportFailures('download', rows);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -369,6 +384,14 @@ async function cmdUpload(opts) {
 
   mf.save(WORK_DIR, manifest);
   console.log(`\n  Uploaded: ${uploaded}, failed: ${failed}. Re-run this command to retry failures.`);
+  if (failed > 0) {
+    const rows = [];
+    for (const [docId, doc] of Object.entries(manifest.docs))
+      for (const v of doc.versions)
+        if (v.state === 'failed' || (v.error && v.state !== 'uploaded'))
+          rows.push({ phase: 'upload', object: 'ContentVersion', sourceId: v.id, targetId: docId, reason: v.error });
+    reportFailures('upload', rows);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -468,6 +491,15 @@ async function cmdLink() {
   if (unmapped > 0) {
     console.log('  "Unmapped" = the parent record was not found in the target org via its');
     console.log('  Legacy_*_Id__c field - migrate those records first, then re-run link.');
+  }
+  if (failed > 0 || unmapped > 0) {
+    const rows = [];
+    for (const [docId, doc] of Object.entries(manifest.docs))
+      for (const l of doc.links) {
+        if (l.state === 'failed') rows.push({ phase: 'link', object: 'ContentDocumentLink', sourceId: l.src, targetId: doc.targetDocId, reason: l.error });
+        else if (l.state === 'unmapped') rows.push({ phase: 'link', object: 'ContentDocumentLink', sourceId: l.src, targetId: doc.targetDocId, reason: 'parent record not found in target via Legacy_*_Id__c' });
+      }
+    reportFailures('link', rows);
   }
 }
 
@@ -643,12 +675,13 @@ async function cmdRecords() {
   const source = await sf.connect('SOURCE');
   const target = await sf.connect('TARGET');
   console.log(`\n=== RECORDS: ${objects.map((o) => o.name).join(', ')} ===`);
-  const summary = await records.migrateRecords(source, target, objects);
+  const { summary, failures } = await records.migrateRecords(source, target, objects);
 
   console.log('\n=== RECORDS DONE ===');
   for (const s of summary) {
     console.log(`  ${s.name}: ${s.upserted} upserted, ${s.skipped} skipped (parent missing), ${s.failed} failed`);
   }
+  reportFailures('records', failures);
   console.log('\nNext: node cli.js run   (to migrate the files)');
 }
 

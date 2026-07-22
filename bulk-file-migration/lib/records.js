@@ -167,6 +167,7 @@ async function migrateRecords(source, target, objects, log = console.log) {
   const byName = Object.fromEntries(objects.map((o) => [o.name, o]));
   const legacyMaps = {}; // objectName -> Map(sourceId -> targetId)
   const summary = [];
+  const failures = []; // { phase, object, sourceId, reason } — for the CSV report
 
   for (const obj of objects) {
     const { name, externalId, parents = {}, where } = obj;
@@ -203,7 +204,7 @@ async function migrateRecords(source, target, objects, log = console.log) {
         rec.RecordTypeId = plan.recordTypeMap.get(r.RecordTypeId);
       }
 
-      let ok = true;
+      let missingParent = null;
       for (const [lookup, parentObj] of Object.entries(parents)) {
         const srcParentId = r[lookup];
         if (srcParentId == null) {
@@ -212,13 +213,14 @@ async function migrateRecords(source, target, objects, log = console.log) {
         }
         const targetParentId = legacyMaps[parentObj] && legacyMaps[parentObj].get(srcParentId);
         if (!targetParentId) {
-          ok = false; // parent not migrated yet -> skip (re-run after parent)
+          missingParent = `${lookup} -> ${parentObj} ${srcParentId}`; // not migrated yet
           break;
         }
         rec[lookup] = targetParentId;
       }
-      if (!ok) {
+      if (missingParent) {
         skipped++;
+        failures.push({ phase: 'records', object: name, sourceId: r.Id, reason: `parent not migrated: ${missingParent}` });
         continue;
       }
       rec[externalId] = r.Id;
@@ -239,7 +241,9 @@ async function migrateRecords(source, target, objects, log = console.log) {
         else {
           failed++;
           const srcId = c[i] && c[i][externalId];
-          log(`  FAILED ${name} (source ${srcId}): ${JSON.stringify(r.errors)}`);
+          const reason = JSON.stringify(r.errors);
+          failures.push({ phase: 'records', object: name, sourceId: srcId, reason });
+          log(`  FAILED ${name} (source ${srcId}): ${reason}`);
         }
       });
     }
@@ -249,7 +253,7 @@ async function migrateRecords(source, target, objects, log = console.log) {
     summary.push({ name, source: rows.length, upserted, skipped, failed });
   }
 
-  return summary;
+  return { summary, failures };
 }
 
 module.exports = { migrateRecords, DEFAULT_OBJECTS, buildFieldPlan };
