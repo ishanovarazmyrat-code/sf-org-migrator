@@ -18,8 +18,15 @@ your host's HTTPS (Render/Railway/etc. give you HTTPS automatically).
 
 ## Authorizing the two orgs
 
-A fresh instance has no saved logins. The simplest way to connect the orgs
-without a shell is to pass each org's **auth URL** as an environment variable:
+**Easiest — from the browser.** Open the deployed URL, sign in with your access
+key, and use **Setup → Connect an org**: paste each org's Consumer Key (from its
+one-time External Client App — see [`docs/OAUTH_SETUP.md`](docs/OAUTH_SETUP.md)),
+click Connect, and approve the shown code at the Salesforce URL. No shell, no
+auth URL. Approve the TARGET in a browser signed into the target org (an
+incognito window is the easy way to keep the two orgs separate).
+
+**Alternative — environment variables.** You can instead pass each org's **auth
+URL** so the instance is authorized on boot:
 
 ```bash
 # On a machine where you're logged in with the Salesforce CLI:
