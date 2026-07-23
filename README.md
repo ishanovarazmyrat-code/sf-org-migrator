@@ -23,6 +23,7 @@ go up to **2 GB each**, and everything is resumable.
 
 - **Run it from your computer** → [`GUIDE_A_LOCAL_MACHINE.md`](GUIDE_A_LOCAL_MACHINE.md)
 - **Run it on a cloud VM (unattended)** → [`GUIDE_B_VIRTUAL_MACHINE.md`](GUIDE_B_VIRTUAL_MACHINE.md)
+- **Host the web UI at a URL** (Render or any VM) → [`DEPLOY.md`](DEPLOY.md)
 
 Both use the same short flow:
 
