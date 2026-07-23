@@ -1,5 +1,9 @@
 # Hosting the web UI at a URL
 
+> Looking for copy-paste, step-by-step deploy instructions (Render **or** a VM)?
+> See [`DEPLOY.md`](DEPLOY.md). This page is the concept + security reference.
+
+
 By default the UI is **local only** (`sf-org-migrator ui` → binds `127.0.0.1`,
 no login) because it can trigger real migrations. To run it behind a URL so
 others can use it in a browser, run it in **hosted mode**: this is a
