@@ -86,3 +86,10 @@ The tool tries them in this order: `.auth/` (OAuth) → `*_AUTH_URL` → CLI ali
 - **Target org File Storage must be ≥ your file volume** (Setup → Storage
   Usage). Files over 2 GB can't go through the API.
 - `.env`, `work/`, and `migration.config.json` are gitignored.
+
+## Development
+
+`npm test` runs the unit test suite (`node --test`, no extra dependency) —
+retry/backoff classification, the manifest's atomic save/load and byte
+accounting, automatic field-mapping decisions, and OAuth token storage. CI
+runs this on every push and PR alongside a syntax check.

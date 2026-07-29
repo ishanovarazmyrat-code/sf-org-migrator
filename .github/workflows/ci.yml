@@ -7,7 +7,7 @@ on:
 
 jobs:
   node:
-    name: Node tool — install & syntax check
+    name: Node tool — install, syntax check, tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,3 +24,4 @@ jobs:
             echo "checking $f"
             node --check "$f"
           done
+      - run: npm test

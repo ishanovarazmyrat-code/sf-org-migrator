@@ -1,6 +1,6 @@
 {
   "name": "sf-org-migrator",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Migrate Salesforce records and files between orgs — files up to 2GB, resumable, with version history. OAuth login, auto field mapping, and a local web UI.",
   "keywords": [
     "salesforce",
@@ -30,7 +30,8 @@
   "main": "cli.js",
   "scripts": {
     "start": "node cli.js",
-    "ui": "node server.js"
+    "ui": "node server.js",
+    "test": "node --test"
   },
   "files": [
     "cli.js",

@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.7.0] — 2026-07-29
+
+- **Real automated tests for the Node tool.** CI previously only ran a syntax
+  check; `npm test` now runs 31 unit tests (`node --test`, no new dependency)
+  covering retry/backoff classification, the manifest's atomic save/load and
+  byte accounting, automatic field-mapping decisions (formula/auto-number
+  exclusion, unmapped-lookup dropping, State/Country ISO-code preference,
+  RecordTypeId mapping), and OAuth token storage + concurrent-refresh
+  de-duplication. Runs in CI on every push and PR.
+- **Validated end-to-end against real orgs**, including a real multi-MB file
+  (not just the small fixture files used in day-to-day testing): records,
+  download, upload, and link all completed with zero failures and byte-exact
+  transfer; two genuinely invalid source records (malformed email addresses)
+  were correctly caught and reported rather than silently dropped.
+- Fixed a stale `ROADMAP.md` entry that still described CLI-auth as unresolved
+  after OAuth device-flow login (shipped in 1.5.0) had already replaced it as
+  the recommended path.
+
 ## [1.6.0] — 2026-07-22
 
 - **The web UI is now a modern app, not a terminal.** Full redesign: gradient
