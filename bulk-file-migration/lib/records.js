@@ -58,6 +58,24 @@ function chunk(arr, size) {
 }
 
 /**
+ * Duplicate rules exist to stop humans creating a second Acme Corp by hand.
+ * A migration is the opposite case: the records already exist in the source
+ * and we are replicating them, so an "is this a duplicate?" alert is noise
+ * that fails the insert with DUPLICATES_DETECTED. This header tells Salesforce
+ * to save anyway — scoped to our own requests, so the org's rules stay
+ * untouched (the alternative is asking people to deactivate rules in Setup,
+ * which changes org config for everyone).
+ *
+ * Only rules whose action is "Allow" (alert) can be bypassed. A rule set to
+ * "Block" still blocks, and the failure is reported as usual.
+ */
+function dmlOptions(allowDuplicates) {
+  const opts = { allOrNone: false };
+  if (allowDuplicates) opts.headers = { 'Sforce-Duplicate-Rule-Header': 'allowSave=true' };
+  return opts;
+}
+
+/**
  * Builds the concrete field list for one object: which fields to copy, and
  * how to map RecordTypeId. Returns { fields, recordTypeMap, warnings }.
  */
@@ -164,7 +182,10 @@ async function buildLegacyMap(target, objCfg) {
   return map;
 }
 
-async function migrateRecords(source, target, objects, log = console.log) {
+async function migrateRecords(source, target, objects, log = console.log, options = {}) {
+  const allowDuplicates = options.allowDuplicates !== false; // default on
+  if (allowDuplicates) log('  (i) duplicate rules bypassed for this run (Sforce-Duplicate-Rule-Header)');
+  const dml = dmlOptions(allowDuplicates);
   const byName = Object.fromEntries(objects.map((o) => [o.name, o]));
   const legacyMaps = {}; // objectName -> Map(sourceId -> targetId)
   const summary = [];
@@ -233,7 +254,7 @@ async function migrateRecords(source, target, objects, log = console.log) {
     for (const c of chunk(toUpsert, 200)) {
       const res = await sf.withRetry(
         target,
-        () => target.sobject(name).upsert(c, externalId, { allOrNone: false }),
+        () => target.sobject(name).upsert(c, externalId, dml),
         { label: `upsert ${name}` }
       );
       const results = Array.isArray(res) ? res : [res];

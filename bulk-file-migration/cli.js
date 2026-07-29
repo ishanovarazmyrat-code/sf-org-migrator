@@ -665,9 +665,11 @@ async function cmdRecords() {
   const records = require('./lib/records');
 
   let objects = records.DEFAULT_OBJECTS;
+  let allowDuplicates = true; // a migration replicates existing records
   try {
     const cfg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'migration.config.json'), 'utf8'));
     if (Array.isArray(cfg.objects) && cfg.objects.length) objects = cfg.objects;
+    if (cfg.allowDuplicates === false) allowDuplicates = false;
   } catch (_) {
     /* no config objects - use defaults */
   }
@@ -675,7 +677,9 @@ async function cmdRecords() {
   const source = await sf.connect('SOURCE');
   const target = await sf.connect('TARGET');
   console.log(`\n=== RECORDS: ${objects.map((o) => o.name).join(', ')} ===`);
-  const { summary, failures } = await records.migrateRecords(source, target, objects);
+  const { summary, failures } = await records.migrateRecords(source, target, objects, console.log, {
+    allowDuplicates,
+  });
 
   console.log('\n=== RECORDS DONE ===');
   for (const s of summary) {

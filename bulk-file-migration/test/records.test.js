@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const sf = require('../lib/sf');
-const { buildFieldPlan } = require('../lib/records');
+const { buildFieldPlan, migrateRecords } = require('../lib/records');
 
 // buildFieldPlan() calls sf.withRetry(conn, fn) and sf.queryAllRecords(conn, soql)
 // internally. Since `sf` is a plain CommonJS module.exports object and Node
@@ -166,4 +166,55 @@ test('buildFieldPlan() reports required target fields that made it into the migr
     const plan = await buildFieldPlan(source, target, { name: 'Account', externalId: 'Legacy_Account_Id__c' }, () => {});
     assert.deepEqual(plan.required, ['Name']);
   });
+});
+
+// --- duplicate rule bypass -------------------------------------------------
+
+// migrateRecords() needs more of the org stubbed than buildFieldPlan does:
+// source rows, the legacy-Id lookup, and the upsert itself. This captures the
+// options the upsert was called with, which is what the header rides on.
+function runMigrateCapturingUpsert(options) {
+  const originalWithRetry = sf.withRetry;
+  const originalQueryAll = sf.queryAllRecords;
+  const calls = [];
+
+  sf.withRetry = async (conn, fn) => fn();
+  sf.queryAllRecords = async (conn, soql) =>
+    /FROM Account$/.test(soql.trim()) ? [{ Id: '001SRC', Name: 'Acme' }] : [];
+
+  const org = {
+    sobject: () => ({
+      describe: async () => ({ fields: [field('Id'), field('Name')] }),
+      upsert: async (records, extIdField, opts) => {
+        calls.push({ records, extIdField, opts });
+        return records.map(() => ({ success: true }));
+      },
+    }),
+  };
+
+  return migrateRecords(
+    org,
+    org,
+    [{ name: 'Account', externalId: 'Legacy_Account_Id__c', fields: 'auto' }],
+    () => {},
+    options
+  )
+    .then(() => calls)
+    .finally(() => {
+      sf.withRetry = originalWithRetry;
+      sf.queryAllRecords = originalQueryAll;
+    });
+}
+
+test('migrateRecords() bypasses duplicate rules by default', async () => {
+  const calls = await runMigrateCapturingUpsert(undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].opts.headers['Sforce-Duplicate-Rule-Header'], 'allowSave=true');
+  assert.equal(calls[0].opts.allOrNone, false);
+});
+
+test('migrateRecords() leaves duplicate rules enforced when allowDuplicates is false', async () => {
+  const calls = await runMigrateCapturingUpsert({ allowDuplicates: false });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].opts.headers, undefined);
 });

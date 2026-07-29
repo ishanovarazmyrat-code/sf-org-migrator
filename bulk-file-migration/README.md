@@ -51,6 +51,13 @@ array (see `lib/records.js` `DEFAULT_OBJECTS` for the shape). Custom objects
 need a `Legacy_<Object>_Id__c` external Id field on the target and, for
 master-detail children, their parent listed first.
 
+**Duplicate rules are bypassed by default.** A migration replicates records
+that already exist in the source, so duplicate alerts would fail the insert
+with `DUPLICATES_DETECTED`; the tool sends `Sforce-Duplicate-Rule-Header` on
+its own requests instead of asking you to deactivate rules in Setup. Rules
+whose action is **Block** still block. Set `"allowDuplicates": false` in
+`migration.config.json` to enforce the target's rules.
+
 ## Where it runs
 
 - **Local machine:** see `../GUIDE_A_LOCAL_MACHINE.md`
