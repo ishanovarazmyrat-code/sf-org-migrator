@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.9.0] — 2026-07-30
 
 - **File sharing is preserved.** `ContentDocumentLink.ShareType` and
   `Visibility` were never read from the source — every migrated link was
