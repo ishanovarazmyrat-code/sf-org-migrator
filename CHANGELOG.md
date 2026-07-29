@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.8.0] — 2026-07-30
+
+- **Duplicate rules no longer block a migration.** A migration replicates
+  records that already exist in the source, so a duplicate rule would reject
+  them with `DUPLICATES_DETECTED` — previously the only way through was to
+  deactivate the rule in the target org's Setup, which changes org config for
+  everyone. The tool now sends `Sforce-Duplicate-Rule-Header: allowSave=true`
+  on its own upserts instead. Rules whose action is **Block** still block, and
+  the failure is reported as usual. Set `"allowDuplicates": false` in
+  `migration.config.json` to enforce the target's rules.
+- **`tools/fill-storage.js`** — seeds an org with large ContentVersions up to a
+  target size, for testing against realistic data volumes. Salesforce's storage
+  figures lag behind uploads by minutes, so the loop also counts locally rather
+  than trusting the API alone.
+- **Validated end-to-end at 5GB**: 11 documents, 5.0GB of files, and 20
+  ContentDocumentLinks rebuilt across Accounts, Contacts, Opportunities and
+  Cases — zero failures.
+- `npm test` now runs 33 unit tests (up from 31).
+
 ## [1.7.0] — 2026-07-29
 
 - **Real automated tests for the Node tool.** CI previously only ran a syntax
