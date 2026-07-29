@@ -223,13 +223,19 @@ async function cmdManifest(opts) {
   for (const ids of chunk(docIds, 200)) {
     const links = await sf.queryAllRecords(
       conn,
-      'SELECT ContentDocumentId, LinkedEntityId FROM ContentDocumentLink ' +
+      'SELECT ContentDocumentId, LinkedEntityId, ShareType, Visibility FROM ContentDocumentLink ' +
         `WHERE ContentDocumentId IN ('${ids.join("','")}')`
     );
     for (const l of links) {
       const prefix = String(l.LinkedEntityId).slice(0, 3);
       if (!supportedPrefixes.includes(prefix)) continue; // e.g. User (005) links
-      docs[l.ContentDocumentId].links.push({ src: l.LinkedEntityId, target: null, state: 'pending' });
+      docs[l.ContentDocumentId].links.push({
+        src: l.LinkedEntityId,
+        target: null,
+        state: 'pending',
+        shareType: l.ShareType || null,
+        visibility: l.Visibility || null,
+      });
     }
   }
   // Drop documents with no link to a migrated record type - uploading them
@@ -397,6 +403,8 @@ async function cmdUpload(opts) {
 /* ------------------------------------------------------------------ */
 /* link                                                               */
 /* ------------------------------------------------------------------ */
+const { linkSharing, SAFE_SHARING } = require('./lib/links');
+
 async function cmdLink() {
   const manifest = mf.load(WORK_DIR);
   if (!manifest) throw new Error('No manifest - run "node cli.js manifest" first.');
@@ -449,7 +457,7 @@ async function cmdLink() {
       }
       l.target = target;
       toInsert.push({
-        record: { ContentDocumentId: doc.targetDocId, LinkedEntityId: target, ShareType: 'V' },
+        record: { ContentDocumentId: doc.targetDocId, LinkedEntityId: target, ...linkSharing(l) },
         link: l,
       });
     }
@@ -458,12 +466,47 @@ async function cmdLink() {
 
   let linked = 0;
   let failed = 0;
+  let downgraded = 0;
+
+  // Visibility 'AllUsers' needs Digital Experiences enabled, and some
+  // ShareType/Visibility combinations the source allows are rejected by a
+  // differently configured target. Rather than lose the link, retry it once
+  // with the safe defaults and report that its sharing was downgraded.
+  const retryWithSafeSharing = async (items) => {
+    if (!items.length) return;
+    const results = await sf.withRetry(
+      conn,
+      () =>
+        conn.sobject('ContentDocumentLink').create(
+          items.map((b) => ({ ...b.record, ...SAFE_SHARING })),
+          { allOrNone: false }
+        ),
+      { label: 'insert links (safe sharing)' }
+    );
+    results.forEach((res, i) => {
+      const { link: l } = items[i];
+      if (res.success || /already|DUPLICATE/i.test(JSON.stringify(res.errors))) {
+        l.state = 'linked';
+        l.sharingDowngraded = true;
+        delete l.error;
+        linked++;
+        downgraded++;
+      } else {
+        l.state = 'failed';
+        l.error = JSON.stringify(res.errors);
+        failed++;
+        console.error(`  FAILED link ${l.src} -> ${l.target}: ${l.error}`);
+      }
+    });
+  };
+
   for (const batch of chunk(toInsert, 200)) {
     const results = await sf.withRetry(
       conn,
       () => conn.sobject('ContentDocumentLink').create(batch.map((b) => b.record), { allOrNone: false }),
       { label: 'insert links' }
     );
+    const needsSafeRetry = [];
     results.forEach((res, i) => {
       const l = batch[i].link;
       if (res.success) {
@@ -476,18 +519,23 @@ async function cmdLink() {
           l.state = 'linked';
           linked++;
         } else {
-          l.state = 'failed';
           l.error = msg;
-          failed++;
-          console.error(`  FAILED link ${l.src} -> ${l.target}: ${msg}`);
+          needsSafeRetry.push(batch[i]);
         }
       }
     });
+    await retryWithSafeSharing(needsSafeRetry);
     mf.save(WORK_DIR, manifest);
   }
 
   mf.save(WORK_DIR, manifest);
   console.log(`\n  Linked: ${linked}, unmapped: ${unmapped}, failed: ${failed}.`);
+  if (downgraded > 0) {
+    console.log(
+      `  ${downgraded} link(s) kept but with default sharing (Viewer/InternalUsers) - the` +
+        " source's ShareType/Visibility was rejected by the target org."
+    );
+  }
   if (unmapped > 0) {
     console.log('  "Unmapped" = the parent record was not found in the target org via its');
     console.log('  Legacy_*_Id__c field - migrate those records first, then re-run link.');

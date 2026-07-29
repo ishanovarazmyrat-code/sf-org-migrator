@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- **File sharing is preserved.** `ContentDocumentLink.ShareType` and
+  `Visibility` were never read from the source — every migrated link was
+  inserted as a plain Viewer link, silently downgrading Collaborator access in
+  the target org. Both fields are now captured in the manifest and replayed on
+  insert. `ShareType: 'I'` (Inferred, assigned by Salesforce for a document's
+  original publish location) becomes `'V'`, since an insert cannot express it.
+  When a target org rejects the source's combination — `Visibility: 'AllUsers'`
+  needs Digital Experiences enabled, for example — the link is retried with
+  Viewer/InternalUsers rather than lost, and the downgrade is reported.
+- `npm test` now runs 39 unit tests.
+
 ## [1.8.0] — 2026-07-30
 
 - **Duplicate rules no longer block a migration.** A migration replicates
