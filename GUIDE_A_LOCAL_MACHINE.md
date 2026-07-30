@@ -14,20 +14,32 @@ tool. No Connected App, no Named Credential, no passwords in files.
 
 ## Step 1 — Install the tools (one time)
 
-1. **Node.js 22 or newer** — https://nodejs.org
-2. **Salesforce CLI** — https://developer.salesforce.com/tools/salesforcecli
+1. **Node.js 22 or newer** — https://nodejs.org (older versions crash on a
+   dependency)
+2. **The migrator:**
+   ```bash
+   npm install -g sf-org-migrator
+   ```
+3. **Salesforce CLI** — https://developer.salesforce.com/tools/salesforcecli —
+   only if you plan to log in with CLI aliases (Step 2) rather than the tool's
+   own OAuth.
 
 Check:
 ```bash
-node -v      # v22.x or higher
-sf --version
+node -v                  # v22.x or higher
+sf-org-migrator doctor   # says what is still missing
 ```
+
+> The commands below are written as `sf-org-migrator …`. Working from a clone
+> of the repo instead? Run them from `bulk-file-migration/` as
+> `node cli.js …` — same commands, same behaviour.
 
 ## Step 2 — Log in to both orgs
 
-> **Recommended:** use the tool's own OAuth login instead — `node cli.js login`
-> (one-time Connected App, no CLI needed). See `docs/OAUTH_SETUP.md`. The
-> Salesforce-CLI method below also works.
+> **Recommended:** use the tool's own OAuth login instead —
+> `sf-org-migrator login source` and `sf-org-migrator login target` (one-time
+> External Client App per org, no Salesforce CLI needed). See
+> `docs/OAUTH_SETUP.md`. The Salesforce-CLI method below also works.
 
 ```bash
 sf org login web --alias sourceOrg
@@ -36,18 +48,23 @@ sf org login web --alias targetOrg
 A browser opens for each; log in. Nothing is stored by the tool — the CLI
 holds the sessions.
 
-## Step 3 — Install the target-org package (one deploy)
+## Step 3 — Install the target-org package (one click)
 
 This creates the batch classes, the schedulers, the `Legacy_*_Id__c` external
 Id fields, and the sync custom setting — so you don't create any of them by
-hand:
+hand. Open this in a browser logged into the **target** org:
+
+> https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxpIAE
+
+(For a sandbox, swap `login` for `test`.) Then assign the permission set:
 
 ```bash
-cd sfdx-package
-sf project deploy start --source-dir force-app --target-org targetOrg
 sf org assign permset --name Migration_Access --target-org targetOrg
-cd ..
 ```
+
+> Working from a clone and want to deploy the source instead of installing the
+> package? `cd sfdx-package && sf project deploy start --source-dir force-app
+> --target-org targetOrg`
 
 The `Migration_Access` permission set grants you access to the new
 `Legacy_*_Id__c` fields — without it, a freshly deployed field stays invisible
@@ -57,18 +74,23 @@ The `Migration_Access` permission set grants you access to the new
 > `Legacy_<Object>_Id__c` field added manually (Text(18), External Id,
 > Unique), since the object is specific to your org.
 
-## Step 4 — Set up the tool
+## Step 4 — Point the tool at your two orgs
+
+State (`work/`, `.auth/`, config) lives in the directory you run from, like
+git — so make a folder for this migration and stay in it:
 
 ```bash
-cd bulk-file-migration
-npm install
-node cli.js init      # pick sourceOrg and targetOrg from the list
+mkdir ~/migration && cd ~/migration
+sf-org-migrator init      # pick sourceOrg and targetOrg from the list
 ```
+
+Skip `init` if you logged in with `sf-org-migrator login` in Step 2 — that
+already recorded both orgs.
 
 ## Step 5 — Check everything is ready
 
 ```bash
-node cli.js doctor
+sf-org-migrator doctor
 ```
 This verifies Node, the CLI, both connections, the external Id fields, your
 file volume, and free disk. Fix anything marked **FAIL** before continuing.
@@ -76,10 +98,10 @@ file volume, and free disk. Fix anything marked **FAIL** before continuing.
 ## Step 6 — Migrate
 
 ```bash
-node cli.js migrate      # records + files, end to end
+sf-org-migrator migrate      # records + files, end to end
 ```
-Or step by step: `node cli.js records`, then `node cli.js run` (files), then
-`node cli.js verify`.
+Or step by step: `sf-org-migrator records`, then `sf-org-migrator run` (files), then
+`sf-org-migrator verify`.
 
 Every step is **resumable** — if it stops, run the same command again and it
 continues where it left off. Runs are logged to `work/logs/`.
@@ -87,7 +109,7 @@ continues where it left off. Runs are logged to `work/logs/`.
 ### Prefer buttons over the terminal?
 
 ```bash
-npm run ui            # then open http://localhost:4599
+sf-org-migrator ui    # then open http://localhost:4599
 ```
 A simple page with **Check / Migrate records / Migrate files / Verify**
 buttons and live output.
@@ -97,12 +119,17 @@ buttons and live output.
 The tool downloads files to your disk, then uploads them. Your computer must
 stay **on and online** for the whole run, with free disk ≥ 2× the file volume.
 
+If disk is the problem, add `--stream`: each file goes straight from one org
+to the other without touching disk. The trade is per-file resumability — an
+interrupted transfer restarts that file instead of resuming it.
+
 ---
 
 ## Checklist before a real run
 - **Target org File Storage ≥ your file volume** (Setup → Storage Usage). A
   Developer Edition org (~20 MB) is testing only; gigabytes need a Production
   org or a large sandbox.
-- Free disk on your machine ≥ 2× the file volume.
+- Free disk on your machine ≥ 2× the file volume — or use `--stream`, which
+  needs none.
 - Files over 2 GB can't go through the API.
 - Records are migrated before files (the tool's `migrate` does this order for you).
