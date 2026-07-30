@@ -136,6 +136,22 @@ async function buildFieldPlan(source, target, objCfg, log) {
   const validSet = new Set(valid);
   const fields = valid.filter((f) => !validSet.has(f + 'Code'));
 
+  // Parent lookups skip the field plan entirely — migrateRecords writes them
+  // straight from the legacy-Id map — so they never got the writability check
+  // every other field gets. A read-only lookup (Lead.ConvertedAccountId is set
+  // by lead conversion, never by an insert) then failed every single record.
+  const writableParents = {};
+  for (const [lookup, parentObj] of Object.entries(parents)) {
+    const t = tgtFields.get(lookup);
+    if (!t) {
+      warnings.push(`parent lookup ${lookup} is not on target ${name} — skipped`);
+    } else if (!t.createable && !t.updateable) {
+      warnings.push(`parent lookup ${lookup} is read-only on target ${name} — skipped (it would fail every record)`);
+    } else {
+      writableParents[lookup] = parentObj;
+    }
+  }
+
   // RecordTypeId: map by DeveloperName when both orgs have RTs for the object.
   let recordTypeMap = null;
   const srcHasRT = srcFields.has('RecordTypeId');
@@ -168,7 +184,7 @@ async function buildFieldPlan(source, target, objCfg, log) {
   }
 
   for (const w of warnings) log(`  (i) ${name}: ${w}`);
-  return { fields, recordTypeMap, required };
+  return { fields, recordTypeMap, required, parents: writableParents };
 }
 
 /** target sourceId -> targetId map for one object, from its external Id field. */
@@ -192,10 +208,13 @@ async function migrateRecords(source, target, objects, log = console.log, option
   const failures = []; // { phase, object, sourceId, reason } — for the CSV report
 
   for (const obj of objects) {
-    const { name, externalId, parents = {}, where } = obj;
-    const parentFields = Object.keys(parents);
+    const { name, externalId, where } = obj;
 
     const plan = await buildFieldPlan(source, target, obj, log);
+    // Only the lookups the target will actually accept — a read-only one is
+    // dropped by the plan rather than failing every record in the object.
+    const parents = plan.parents;
+    const parentFields = Object.keys(parents);
     const selectFields = [...new Set([
       'Id',
       ...plan.fields,

@@ -15,8 +15,8 @@ function workDirWith(reports) {
 }
 
 const HEADER = 'phase,object,sourceId,targetId,reason\n';
-const dml = (code, message) =>
-  `"[{""statusCode"":""${code}"",""message"":""${message}"",""fields"":[]}]"`;
+const dml = (code, message, fields = []) =>
+  `"[{""statusCode"":""${code}"",""message"":""${message}"",""fields"":[${fields.map((f) => `""${f}""`).join(',')}]}]"`;
 
 test('parseCsv handles the quoted JSON blobs writeReport puts in the reason column', () => {
   const rows = parseCsv(HEADER + `records,Contact,003x,,${dml('DUPLICATES_DETECTED', 'You are creating a duplicate record.')}\n`);
@@ -105,4 +105,35 @@ test('writeReport returns a path only when there was something to report', () =>
   const dir = workDirWith({});
   assert.equal(writeReport(dir, 'link', []), null, 'a clean run stays quiet in the console');
   assert.match(writeReport(dir, 'link', [{ reason: 'x' }]), /link-.*\.csv$/);
+});
+
+test('one cause reported with its field names in different orders stays one group', () => {
+  // Salesforce returns the offending fields in an arbitrary order, so the same
+  // defect arrives spelled several ways and used to split into separate groups.
+  const dir = workDirWith({
+    'records-2026-07-30T10-00-00-000Z.csv': HEADER +
+      `records,Lead,00Q1,,${dml('INVALID_FIELD_FOR_INSERT_UPDATE', 'Unable to create/update fields: ConvertedContactId, ConvertedAccountId.', ['ConvertedContactId', 'ConvertedAccountId'])}\n` +
+      `records,Lead,00Q2,,${dml('INVALID_FIELD_FOR_INSERT_UPDATE', 'Unable to create/update fields: ConvertedAccountId, ConvertedContactId.', ['ConvertedAccountId', 'ConvertedContactId'])}\n`,
+  });
+  const groups = summarize(dir);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].count, 2);
+});
+
+test('collapsing record ids leaves same-length field names alone', () => {
+  // "ConvertedAccountId" is exactly 18 characters — the length of a record Id.
+  const dir = workDirWith({
+    'records-2026-07-30T10-00-00-000Z.csv': HEADER +
+      `records,Lead,00Qd3000009bSZdEAM,,${dml('INVALID_FIELD_FOR_INSERT_UPDATE', 'Unable to create/update fields: ConvertedAccountId.', ['ConvertedAccountId'])}\n`,
+  });
+  const [g] = summarize(dir);
+  assert.match(g.reason, /ConvertedAccountId/, 'the field name is what the reader needs');
+  assert.doesNotMatch(g.reason, /<id>/);
+});
+
+test('a message naming fields Salesforce did not list separately is kept whole', () => {
+  assert.match(
+    readableReason(JSON.stringify([{ statusCode: 'INVALID_FIELD_FOR_INSERT_UPDATE', message: 'Unable to create/update fields: Foo__c.', fields: [] }])),
+    /Foo__c/
+  );
 });

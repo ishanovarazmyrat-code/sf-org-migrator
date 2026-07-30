@@ -218,3 +218,47 @@ test('migrateRecords() leaves duplicate rules enforced when allowDuplicates is f
   assert.equal(calls.length, 1);
   assert.equal(calls[0].opts.headers, undefined);
 });
+
+test('buildFieldPlan() drops a parent lookup the target will not accept', async () => {
+  // Lead.ConvertedAccountId is set by lead conversion, never by an insert.
+  // Parent lookups bypass the field list, so without this check every single
+  // record fails with INVALID_FIELD_FOR_INSERT_UPDATE.
+  const describe = {
+    source: { Lead: { fields: [field('Id'), field('Company'), field('ConvertedAccountId', { type: 'reference' }), field('OwnerId', { type: 'reference' })] } },
+    target: {
+      Lead: {
+        fields: [
+          field('Id'),
+          field('Company'),
+          field('ConvertedAccountId', { type: 'reference', createable: false, updateable: false }),
+          field('OwnerId', { type: 'reference' }),
+        ],
+      },
+    },
+  };
+  await withStubbedSf(describe, {}, async (source, target) => {
+    const plan = await buildFieldPlan(
+      source,
+      target,
+      { name: 'Lead', externalId: 'Legacy_Lead_Id__c', fields: 'auto', parents: { ConvertedAccountId: 'Account', OwnerId: 'User' } },
+      () => {}
+    );
+    assert.equal('ConvertedAccountId' in plan.parents, false, 'read-only lookup is dropped');
+    assert.equal(plan.parents.OwnerId, 'User', 'a writable lookup is kept');
+  });
+});
+
+test('buildFieldPlan() drops a parent lookup that does not exist on the target', async () => {
+  const describe = {
+    source: { Lead: { fields: [field('Id'), field('Custom__c', { type: 'reference' })] } },
+    target: { Lead: { fields: [field('Id')] } },
+  };
+  await withStubbedSf(describe, {}, async (source, target) => {
+    const plan = await buildFieldPlan(
+      source, target,
+      { name: 'Lead', externalId: 'Legacy_Lead_Id__c', fields: 'auto', parents: { Custom__c: 'Account' } },
+      () => {}
+    );
+    assert.deepEqual(plan.parents, {});
+  });
+});
