@@ -7,6 +7,14 @@
  */
 const jsforce = require('jsforce');
 const https = require('https');
+const http = require('http');
+
+// Salesforce is always https, but picking the transport from the URL means a
+// plain-http endpoint works too — which is what makes these code paths
+// testable against a local server instead of only in production.
+function transportFor(url) {
+  return String(url).startsWith('http:') ? http : https;
+}
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -254,7 +262,7 @@ async function queryAllRecords(conn, soql) {
 
 function httpsGetToFile(url, headers, destPath) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers }, (res) => {
+    const req = transportFor(url).get(url, { headers }, (res) => {
       if (res.statusCode === 401) {
         res.resume();
         return reject(Object.assign(new Error('Unauthorized'), { statusCode: 401 }));
@@ -262,7 +270,7 @@ function httpsGetToFile(url, headers, destPath) {
       if (res.statusCode >= 300) {
         let body = '';
         res.on('data', (c) => (body += c));
-        res.on('end', () => reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 500)}`)));
+        res.on('end', () => reject(Object.assign(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 500)}`), { statusCode: res.statusCode })));
         return;
       }
       const out = fs.createWriteStream(destPath);
@@ -298,8 +306,9 @@ async function downloadVersionToFile(conn, versionId, destPath) {
  */
 function openVersionStream(conn, versionId) {
   return new Promise((resolve, reject) => {
-    const req = https.get(
-      versionDataUrl(conn, versionId),
+    const url = versionDataUrl(conn, versionId);
+    const req = transportFor(url).get(
+      url,
       { headers: { Authorization: `Bearer ${conn.accessToken}` } },
       (res) => {
         if (res.statusCode === 401) {
@@ -309,7 +318,7 @@ function openVersionStream(conn, versionId) {
         if (res.statusCode >= 300) {
           let body = '';
           res.on('data', (c) => (body += c));
-          res.on('end', () => reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 500)}`)));
+          res.on('end', () => reject(Object.assign(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 500)}`), { statusCode: res.statusCode })));
           return;
         }
         resolve(res);
@@ -351,10 +360,11 @@ function multipartPost(conn, metadata, openBody, fileSize) {
     const closing = Buffer.from(`\r\n--${boundary}--`, 'utf8');
 
     const url = new URL(`${conn.instanceUrl}/services/data/v${conn.version}/sobjects/ContentVersion/`);
-    const req = https.request(
+    const req = transportFor(url.href).request(
       {
         method: 'POST',
         hostname: url.hostname,
+        port: url.port || undefined,
         path: url.pathname,
         headers: {
           Authorization: `Bearer ${conn.accessToken}`,
@@ -376,7 +386,7 @@ function multipartPost(conn, metadata, openBody, fileSize) {
             /* non-JSON error body - handled below */
           }
           if (res.statusCode >= 300 || !json || json.success === false) {
-            return reject(new Error(`Upload failed (HTTP ${res.statusCode}): ${body.slice(0, 500)}`));
+            return reject(Object.assign(new Error(`Upload failed (HTTP ${res.statusCode}): ${body.slice(0, 500)}`), { statusCode: res.statusCode }));
           }
           resolve(json); // { id, success, errors }
         });
