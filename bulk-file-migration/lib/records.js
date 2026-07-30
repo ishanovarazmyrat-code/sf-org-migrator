@@ -13,6 +13,8 @@
  * copied:
  *   - formula/calculated and auto-number fields (not writable)
  *   - system audit fields (not createable)
+ *   - create-only fields — records go in by upsert, so a field the target
+ *     refuses on update would pass the first run and fail every re-run
  *   - reference (lookup) fields NOT declared in `parents` — a raw source-org
  *     Id would be meaningless in the target, so unmapped lookups are skipped
  *     and reported
@@ -97,6 +99,12 @@ async function buildFieldPlan(source, target, objCfg, log) {
     if (!s) return `${fname}: not on source ${name}`;
     if (!t) return `${fname}: not on target ${name}`;
     if (!t.createable && !t.updateable) return `${fname}: not writable on target`;
+    // Records go in by UPSERT, so the same field has to survive both an insert
+    // and an update. A create-only field (Lead.IsConverted,
+    // Opportunity.ContactId) works on the first run and then fails every
+    // record on the second — which would quietly break the promise that a run
+    // can be repeated.
+    if (t.createable && !t.updateable) return `${fname}: create-only on target, so re-running the upsert would fail`;
     if (t.calculated || s.calculated) return `${fname}: formula field`;
     if (t.autoNumber || s.autoNumber) return `${fname}: auto-number`;
     if (s.type === 'address' || s.type === 'location') return `${fname}: compound (components are copied instead)`;
@@ -147,6 +155,8 @@ async function buildFieldPlan(source, target, objCfg, log) {
       warnings.push(`parent lookup ${lookup} is not on target ${name} — skipped`);
     } else if (!t.createable && !t.updateable) {
       warnings.push(`parent lookup ${lookup} is read-only on target ${name} — skipped (it would fail every record)`);
+    } else if (!t.updateable) {
+      warnings.push(`parent lookup ${lookup} is create-only on target ${name} — skipped (re-running the upsert would fail)`);
     } else {
       writableParents[lookup] = parentObj;
     }

@@ -262,3 +262,51 @@ test('buildFieldPlan() drops a parent lookup that does not exist on the target',
     assert.deepEqual(plan.parents, {});
   });
 });
+
+test('buildFieldPlan() drops a create-only field, because upsert has to survive a re-run', async () => {
+  // Lead.IsConverted and Opportunity.ContactId describe as createable but not
+  // updateable. Records go in by upsert, so such a field lands fine the first
+  // time and then fails every record once they exist.
+  const describe = {
+    source: { Lead: { fields: [field('Id'), field('Company'), field('IsConverted', { type: 'boolean' })] } },
+    target: {
+      Lead: {
+        fields: [
+          field('Id'),
+          field('Company'),
+          field('IsConverted', { type: 'boolean', createable: true, updateable: false }),
+        ],
+      },
+    },
+  };
+  await withStubbedSf(describe, {}, async (source, target) => {
+    const plan = await buildFieldPlan(source, target, { name: 'Lead', externalId: 'Legacy_Lead_Id__c', fields: 'auto' }, () => {});
+    assert.deepEqual(plan.fields, ['Company']);
+  });
+});
+
+test('buildFieldPlan() keeps a field that is only updateable — an upsert can still write it', async () => {
+  const describe = {
+    source: { Account: { fields: [field('Id'), field('Note__c')] } },
+    target: { Account: { fields: [field('Id'), field('Note__c', { createable: false, updateable: true })] } },
+  };
+  await withStubbedSf(describe, {}, async (source, target) => {
+    const plan = await buildFieldPlan(source, target, { name: 'Account', externalId: 'Legacy_Account_Id__c', fields: 'auto' }, () => {});
+    assert.deepEqual(plan.fields, ['Note__c']);
+  });
+});
+
+test('buildFieldPlan() drops a create-only parent lookup for the same reason', async () => {
+  const describe = {
+    source: { Opportunity: { fields: [field('Id'), field('ContactId', { type: 'reference' })] } },
+    target: { Opportunity: { fields: [field('Id'), field('ContactId', { type: 'reference', createable: true, updateable: false })] } },
+  };
+  await withStubbedSf(describe, {}, async (source, target) => {
+    const plan = await buildFieldPlan(
+      source, target,
+      { name: 'Opportunity', externalId: 'Legacy_Opportunity_Id__c', fields: 'auto', parents: { ContactId: 'Contact' } },
+      () => {}
+    );
+    assert.deepEqual(plan.parents, {});
+  });
+});
