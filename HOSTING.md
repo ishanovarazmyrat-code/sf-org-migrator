@@ -71,5 +71,6 @@ The repo ships a [`render.yaml`](render.yaml). On [Render](https://render.com):
 - Always serve over **HTTPS** (the login key is sent to the server).
 - Data flows through the instance's disk while migrating — run it somewhere you
   trust, and delete the instance (and its disk) when the migration is done.
-- One instance = one pair of orgs. For a true multi-tenant service where many
-  customers connect their own orgs, see Phase 3 in [ROADMAP.md](ROADMAP.md).
+- One instance = one pair of orgs. Serving many customers from a single
+  instance would need multi-tenant auth, isolated storage and a job queue —
+  none of which this hosted mode attempts.
