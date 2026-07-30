@@ -619,7 +619,13 @@ $('#saveObjects').addEventListener('click', async () => {
 /* ===================== run ===================== */
 const log = $('#log'), results = $('#results'), resultTitle = $('#resultTitle');
 const phaseEls = {}; $$('.phase').forEach((p) => (phaseEls[p.dataset.cmd] = p));
-const PHASE_LABELS = { stats: 'Check', records: 'Records', run: 'Files', verify: 'Verify' };
+// The retry button can run an individual file phase, which has no card of its
+// own — the Files card covers all three. Without this, running one of them
+// looks up an element that isn't there and leaves the buttons disabled.
+const CARD_FOR = { download: 'run', upload: 'run', link: 'run' };
+const cardOf = (cmd) => phaseEls[CARD_FOR[cmd] || cmd] || phaseEls.run;
+const PHASE_LABELS = { stats: 'Check', records: 'Records', run: 'Files', verify: 'Verify',
+  download: 'Download', upload: 'Upload', link: 'Link' };
 let es = null, startTs = 0, activeCmd = null, buffer = '', queue = [], timerInt = null;
 
 $('#logToggle').addEventListener('click', () => { $('#logToggle').classList.toggle('open'); log.classList.toggle('open'); });
@@ -631,24 +637,42 @@ $('#runAll').addEventListener('click', () => {
 });
 
 function setChip(cmd, state, text) {
-  const chip = phaseEls[cmd].querySelector('.chip');
+  const chip = cardOf(cmd).querySelector('.chip');
   chip.className = 'chip ' + state; chip.textContent = text;
-  phaseEls[cmd].classList.remove('running', 'done', 'failed');
-  if (state !== 'idle') phaseEls[cmd].classList.add(state);
+  cardOf(cmd).classList.remove('running', 'done', 'failed');
+  if (state !== 'idle') cardOf(cmd).classList.add(state);
 }
 function setFill(cmd, pct, indet) {
-  const fill = phaseEls[cmd].querySelector('.pfill');
+  const fill = cardOf(cmd).querySelector('.pfill');
   fill.classList.toggle('indet', !!indet);
   if (!indet) fill.style.width = pct + '%';
 }
 function parseFraction(line) { const m = line.match(/\((\d+)\s*\/\s*(\d+)\)/); return m ? [+m[1], +m[2]] : null; }
 
+function setBusy(busy) {
+  $$('.phaseBtn').forEach((b) => (b.disabled = busy));
+  $('#runAll').disabled = busy;
+}
+
 function run(cmd) {
+  try {
+    startRun(cmd);
+  } catch (err) {
+    // Nothing is running, so leaving the buttons disabled would strand the
+    // user with no way forward but a page reload.
+    setBusy(false);
+    clearInterval(timerInt);
+    queue = [];
+    toast('err', 'Could not start ' + (PHASE_LABELS[cmd] || cmd), String((err && err.message) || err));
+  }
+}
+
+function startRun(cmd) {
   if (es) es.close();
-  $$('.phaseBtn').forEach((b) => (b.disabled = true)); $('#runAll').disabled = true;
+  setBusy(true);
   clearInterval(timerInt);
   timerInt = setInterval(() => {
-    const chip = phaseEls[cmd].querySelector('.chip');
+    const chip = cardOf(cmd).querySelector('.chip');
     if (chip.classList.contains('running')) chip.textContent = 'Running · ' + fmtTime(Math.round((Date.now() - startTs) / 1000));
   }, 1000);
   activeCmd = cmd; buffer = ''; log.textContent = '$ ' + cmd + '\n'; startTs = Date.now();
@@ -684,9 +708,9 @@ function run(cmd) {
     es.close(); es = null;
     if (ok && queue.length) { setTimeout(() => run(queue.shift()), 500); return; } // chain the full run
     queue = [];
-    $$('.phaseBtn').forEach((b) => (b.disabled = false)); $('#runAll').disabled = false;
+    setBusy(false);
   });
-  es.onerror = () => { clearInterval(timerInt); queue = []; $$('.phaseBtn').forEach((b) => (b.disabled = false)); $('#runAll').disabled = false; setChip(cmd, 'failed', 'Failed'); toast('err', 'Connection lost', 'The run stream was interrupted.'); if (es) { es.close(); es = null; } };
+  es.onerror = () => { clearInterval(timerInt); queue = []; setBusy(false); setChip(cmd, 'failed', 'Failed'); toast('err', 'Connection lost', 'The run stream was interrupted.'); if (es) { es.close(); es = null; } };
 }
 
 /* ---------- failures: grouped by cause, split by what a re-run can fix ---------- */
