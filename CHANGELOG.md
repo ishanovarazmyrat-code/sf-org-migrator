@@ -3,6 +3,37 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## Salesforce package 0.2.0 — 2026-07-30
+
+The `sfdx-package` half of the product versions separately from the npm CLI.
+Install: `https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxpIAE`
+
+- **The packaged Apex runs in user mode.** Every local SOQL carries
+  `WITH USER_MODE` and every DML `AccessLevel.USER_MODE` / `as user`. Before
+  this, `with sharing` was the only control — which enforces record-level
+  sharing but not object or field permissions, so the batches could write
+  fields the running user had no access to. This is the most common reason a
+  listing fails Salesforce's Security Review. The schedulers' custom-setting
+  writes stay in system mode on purpose: they hold a sync watermark, not
+  customer data.
+- **Rejected records are no longer discarded.** `Database.upsert(..., false)`
+  returns per-record results that nothing looked at, so a record the target
+  refused simply vanished. Each result is now inspected, failures are counted
+  and reported in `finish()` with the status code and message.
+- **A missing external-Id field fails loudly instead of migrating nothing.**
+  The batches read the field token from the describe map — and a field the
+  running user cannot see is absent from that map entirely, so the token came
+  back null, the upsert threw, the chunk handler swallowed it, and the run
+  reported success having moved nothing. It now says which field is invisible
+  and to assign the Migration_Access permission set.
+- **A missing Named Credential fails at the start.** It used to surface as a
+  callout error inside `execute()`, where the same handler swallowed it.
+- **The tests verify the permission set.** They run inside `System.runAs` as a
+  user holding only Migration_Access, so adding a field to the migration and
+  forgetting the permission set now fails the suite rather than a customer.
+- **Lead support**: `Legacy_Lead_Id__c` external Id and its permission-set
+  entry, closing the gap with the CLI, which already migrated Leads.
+
 ## [1.11.0] — 2026-07-30
 
 - **Create-only fields are no longer copied — a re-run used to fail where the
