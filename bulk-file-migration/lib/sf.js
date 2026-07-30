@@ -277,25 +277,59 @@ function httpsGetToFile(url, headers, destPath) {
   });
 }
 
+function versionDataUrl(conn, versionId) {
+  return `${conn.instanceUrl}/services/data/v${conn.version}/sobjects/ContentVersion/${versionId}/VersionData`;
+}
+
 /** Streams a ContentVersion binary straight to disk. Returns bytes written. */
 async function downloadVersionToFile(conn, versionId, destPath) {
   return withRetry(
     conn,
     () =>
-      httpsGetToFile(
-        `${conn.instanceUrl}/services/data/v${conn.version}/sobjects/ContentVersion/${versionId}/VersionData`,
-        { Authorization: `Bearer ${conn.accessToken}` },
-        destPath
-      ),
+      httpsGetToFile(versionDataUrl(conn, versionId), { Authorization: `Bearer ${conn.accessToken}` }, destPath),
     { label: `download ${versionId}` }
   );
+}
+
+/**
+ * Opens a ContentVersion's binary as a readable stream instead of writing it
+ * to disk. Resolves with the response object, which the caller must consume
+ * or destroy — an abandoned response holds the socket open.
+ */
+function openVersionStream(conn, versionId) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      versionDataUrl(conn, versionId),
+      { headers: { Authorization: `Bearer ${conn.accessToken}` } },
+      (res) => {
+        if (res.statusCode === 401) {
+          res.resume();
+          return reject(Object.assign(new Error('Unauthorized'), { statusCode: 401 }));
+        }
+        if (res.statusCode >= 300) {
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () => reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 500)}`)));
+          return;
+        }
+        resolve(res);
+      }
+    );
+    req.on('error', reject);
+  });
 }
 
 function headerSafe(name) {
   return String(name).replace(/["\r\n]/g, '_');
 }
 
-function multipartPost(conn, metadata, filePath, fileSize) {
+/**
+ * `openBody` returns the Readable carrying the binary. Taking a factory rather
+ * than a stream matters for retries: a consumed stream cannot be replayed, so
+ * each attempt asks for a fresh one (a new file handle, or a new GET against
+ * the source org).
+ */
+function multipartPost(conn, metadata, openBody, fileSize) {
   return new Promise((resolve, reject) => {
     const boundary = `sfb_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     // entity_content's Content-Type must be its own header line, not a
@@ -351,13 +385,33 @@ function multipartPost(conn, metadata, filePath, fileSize) {
     req.on('error', reject);
     req.write(metaPart);
     req.write(filePartHeader);
-    const stream = fs.createReadStream(filePath);
-    stream.on('error', reject);
-    stream.on('end', () => {
-      req.write(closing);
-      req.end();
-    });
-    stream.pipe(req, { end: false });
+
+    Promise.resolve()
+      .then(openBody)
+      .then((stream) => {
+        // Content-Length was already sent, so a body of the wrong length would
+        // hang or corrupt the request. Counting lets us fail with a clear
+        // message instead.
+        let sent = 0;
+        stream.on('data', (c) => (sent += c.length));
+        stream.on('error', (err) => {
+          req.destroy();
+          reject(err);
+        });
+        stream.on('end', () => {
+          if (sent !== fileSize) {
+            req.destroy();
+            return reject(new Error(`size mismatch: expected ${fileSize} bytes, streamed ${sent}`));
+          }
+          req.write(closing);
+          req.end();
+        });
+        stream.pipe(req, { end: false });
+      })
+      .catch((err) => {
+        req.destroy();
+        reject(err);
+      });
   });
 }
 
@@ -367,9 +421,34 @@ function multipartPost(conn, metadata, filePath, fileSize) {
  * the 2GB REST ceiling, so there is no separate base64 branch to maintain.
  */
 async function uploadVersionMultipart(conn, metadata, filePath, fileSize) {
-  return withRetry(conn, () => multipartPost(conn, metadata, filePath, fileSize), {
+  return withRetry(conn, () => multipartPost(conn, metadata, () => fs.createReadStream(filePath), fileSize), {
     label: `upload ${metadata.PathOnClient}`,
   });
+}
+
+/**
+ * Copies one ContentVersion straight from the source org into the target org,
+ * never touching local disk. Trades the download phase's resumability for not
+ * needing disk equal to the data volume: a dropped connection restarts this
+ * file rather than resuming it, so the disk path stays the default.
+ *
+ * Both orgs can expire mid-transfer, and each retry re-opens the source.
+ */
+async function streamVersionBetweenOrgs(source, target, versionId, metadata, size) {
+  return withRetry(
+    target,
+    async () => {
+      try {
+        return await multipartPost(target, metadata, () => openVersionStream(source, versionId), size);
+      } catch (err) {
+        // A 401 here may belong to either org; withRetry only knows about the
+        // target, so refresh the source ourselves before it retries.
+        if (isSessionError(err) && source.$reauth) await source.$reauth();
+        throw err;
+      }
+    },
+    { label: `stream ${metadata.PathOnClient}` }
+  );
 }
 
 /** Simple concurrency limiter - no extra dependency needed. */
@@ -400,6 +479,8 @@ module.exports = {
   isTransient,
   queryAllRecords,
   downloadVersionToFile,
+  openVersionStream,
   uploadVersionMultipart,
+  streamVersionBetweenOrgs,
   createLimiter,
 };

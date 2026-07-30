@@ -32,7 +32,23 @@ Prefer buttons? `npm run ui` → http://localhost:4599
 | `verify` | Show current state and any failures. |
 | `manifest` / `download` / `upload` / `link` | Individual file phases (for control / retries). |
 
-Options: `--limit N`, `--where "SOQL"`, `--all-versions`, `--concurrency N`, `--force`.
+Options: `--limit N`, `--where "SOQL"`, `--all-versions`, `--concurrency N`, `--force`,
+`--stream`.
+
+### `--stream`: skip the local disk
+
+By default every binary is downloaded to `work/data/` and then uploaded, so a
+run needs free disk equal to the data volume — and an interrupted run resumes
+from what is already on disk. `--stream` sends each file straight from the
+source org to the target in one hop:
+
+```bash
+sf-org-migrator run --stream
+```
+
+The trade is resumability. There is no half-finished file on disk to resume
+from, so an interrupted transfer restarts that file from the beginning. Use it
+when disk is the constraint; leave it off for long runs over shaky links.
 
 ## Configuration
 

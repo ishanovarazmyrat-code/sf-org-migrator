@@ -92,6 +92,7 @@ function parseArgs(argv) {
     else if (a === '--where') opts.where = argv[++i];
     else if (a === '--all-versions') opts.allVersions = true;
     else if (a === '--force') opts.force = true;
+    else if (a === '--stream') opts.stream = true;
     else opts._.push(a);
   }
   return opts;
@@ -334,10 +335,17 @@ async function cmdUpload(opts) {
   const conn = await sf.connect('TARGET');
   const dir = mf.dataDir(WORK_DIR);
 
+  // --stream skips the disk round trip: the binary goes source -> target in
+  // one hop, so versions move straight from "pending" to "uploaded" and the
+  // download phase never runs.
+  const source = opts.stream ? await sf.connect('SOURCE') : null;
+  const readyState = opts.stream ? 'pending' : 'downloaded';
+
   const docsToUpload = Object.entries(manifest.docs).filter(([, doc]) =>
-    doc.versions.some((v) => v.state === 'downloaded')
+    doc.versions.some((v) => v.state === readyState)
   );
   console.log(`\n=== UPLOAD: ${docsToUpload.length} document(s) with pending version(s) ===`);
+  if (opts.stream) console.log('  streaming source -> target (no local disk, not resumable per file)');
 
   const limit = sf.createLimiter(opts.concurrency || 3);
   let uploaded = 0;
@@ -351,15 +359,18 @@ async function cmdUpload(opts) {
         // ContentDocument, later ones append to it.
         for (const v of doc.versions) {
           if (v.state === 'uploaded') continue;
-          if (v.state !== 'downloaded') {
-            console.warn(`  SKIP ${v.pathOnClient} - state is "${v.state}" (download it first).`);
+          if (v.state !== readyState) {
+            const hint = opts.stream ? 'rebuild the manifest' : 'download it first';
+            console.warn(`  SKIP ${v.pathOnClient} - state is "${v.state}" (${hint}).`);
             break; // keep version order intact - don't upload v3 before v2
           }
           const filePath = path.join(dir, `${v.id}.bin`);
           try {
             const metadata = { Title: doc.title, PathOnClient: v.pathOnClient };
             if (doc.targetDocId) metadata.ContentDocumentId = doc.targetDocId;
-            const result = await sf.uploadVersionMultipart(conn, metadata, filePath, v.size);
+            const result = opts.stream
+              ? await sf.streamVersionBetweenOrgs(source, conn, v.id, metadata, v.size)
+              : await sf.uploadVersionMultipart(conn, metadata, filePath, v.size);
             v.targetId = result.id;
             v.state = 'uploaded';
             delete v.error;
@@ -837,7 +848,7 @@ async function main() {
     case 'migrate':
       await cmdRecords();
       if (!mf.load(WORK_DIR)) await cmdManifest(opts);
-      await cmdDownload(opts);
+      if (!opts.stream) await cmdDownload(opts);
       await cmdUpload(opts);
       await cmdLink();
       return cmdVerify();
@@ -855,7 +866,7 @@ async function main() {
       return cmdVerify();
     case 'run':
       if (!mf.load(WORK_DIR)) await cmdManifest(opts);
-      await cmdDownload(opts);
+      if (!opts.stream) await cmdDownload(opts);
       await cmdUpload(opts);
       await cmdLink();
       return cmdVerify();
