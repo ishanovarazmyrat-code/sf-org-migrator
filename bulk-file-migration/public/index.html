@@ -343,6 +343,7 @@
           <button class="btn ghost sm block phaseBtn">Migrate files</button>
           <div class="pbar"><div class="pfill"></div></div>
           <label class="checkline" style="margin:10px 0 0;font-size:11.5px;"><input type="checkbox" id="allVersions" /> Include version history</label>
+          <label class="checkline" style="margin:4px 0 0;font-size:11.5px;" title="Sends each file straight from one org to the other. Needs no local disk, but an interrupted transfer restarts that file instead of resuming it."><input type="checkbox" id="streamMode" /> Stream (no local disk, not resumable per file)</label>
         </div>
         <div class="phase" data-cmd="verify">
           <span class="chip idle">Idle</span>
@@ -683,6 +684,7 @@ function startRun(cmd) {
 
   let qs = '/run?cmd=' + encodeURIComponent(cmd);
   if (cmd === 'run' && $('#allVersions').checked) qs += '&allVersions=1';
+  if (['run', 'migrate', 'upload'].includes(cmd) && $('#streamMode') && $('#streamMode').checked) qs += '&stream=1';
   es = new EventSource(qs);
   es.addEventListener('log', (e) => {
     const line = JSON.parse(e.data); buffer += line + '\n';

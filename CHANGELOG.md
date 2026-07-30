@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.12.0] — 2026-07-30
+
+- **`--stream` is available in the web UI** — a checkbox on the Files card.
+  It only existed on the command line, so anyone driving the tool from the UI
+  was forced through the disk path.
+- **`--version` and `--help`.** The first thing anyone types after installing
+  from npm printed a usage error instead of a version.
+- **The usage text lists every command.** `stats`, `verify`, the individual
+  file phases and `failures` were all missing from it — `failures` had no way
+  to be discovered at all. It also said `node cli.js` even when invoked as
+  `sf-org-migrator`; it now names whichever was actually used.
+- Validated running the whole thing from a cloud VM: 10GB, 16 documents, 25
+  links, zero failures, driven from the web UI over an SSH tunnel. Streaming
+  a 1GB file took **136s from a VM in the orgs' region against 329s from a
+  laptop two countries away** — where you run it matters more than any tuning.
+  The VM guides now lead with picking the right region.
+
 ## Salesforce package 0.2.0 — 2026-07-30
 
 The `sfdx-package` half of the product versions separately from the npm CLI.

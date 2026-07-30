@@ -93,6 +93,8 @@ function parseArgs(argv) {
     else if (a === '--all-versions') opts.allVersions = true;
     else if (a === '--force') opts.force = true;
     else if (a === '--stream') opts.stream = true;
+    else if (a === '--version' || a === '-v') opts.version = true;
+    else if (a === '--help' || a === '-h') opts.help = true;
     else opts._.push(a);
   }
   return opts;
@@ -858,15 +860,27 @@ function setupFileLog(cmd) {
 }
 
 /* ------------------------------------------------------------------ */
+// How this run was invoked, so the help text names the command the user typed.
+const INVOKED_AS = path.basename(process.argv[1] || '') === 'cli.js' ? 'node cli.js' : 'sf-org-migrator';
+
 async function main() {
   const [, , cmd, ...rest] = process.argv;
   const opts = parseArgs(rest);
 
-  if (['records', 'migrate', 'run', 'download', 'upload', 'link'].includes(cmd)) {
-    setupFileLog(cmd);
+  // `--version` before anything else: it is the first thing anyone types after
+  // installing from npm, and it must not need a config or a connection.
+  if (cmd === '--version' || cmd === '-v' || opts.version) {
+    console.log(require('./package.json').version);
+    return;
+  }
+  // `--help` with no command falls through to the usage block below.
+  const command = cmd === '--help' || cmd === '-h' ? undefined : cmd;
+
+  if (['records', 'migrate', 'run', 'download', 'upload', 'link'].includes(command)) {
+    setupFileLog(command);
   }
 
-  switch (cmd) {
+  switch (command) {
     case 'ui':
       require('./server'); // starts the local web UI (keeps running)
       return;
@@ -906,16 +920,24 @@ async function main() {
       await cmdLink();
       return cmdVerify();
     default:
-      console.log('Usage: node cli.js <login|init|doctor|records|migrate|stats|manifest|download|upload|link|verify|run> [options]');
+      // Installed globally the command is `sf-org-migrator`; from a clone it is
+      // `node cli.js`. Name whichever one they actually typed.
+      console.log(`Usage: ${INVOKED_AS} <command> [options]`);
       console.log('  login     authorize both orgs via OAuth device flow (no CLI, no password)');
       console.log('  init      alternative: pick two Salesforce CLI orgs');
       console.log('  ui        open the local web UI (buttons instead of the terminal)');
       console.log('  doctor    preflight checks - what is missing before you migrate');
+      console.log('  stats     read-only: how many files in the source org, and how big');
       console.log('  records   migrate records (no Named Credential needed)');
       console.log('  migrate   records + files, end to end');
       console.log('  run       files only (manifest -> download -> upload -> link -> verify)');
-      console.log('Options: --limit N, --where "SOQL condition", --all-versions, --concurrency N, --force');
-      process.exit(cmd ? 1 : 0);
+      console.log('  manifest / download / upload / link   the file phases, one at a time');
+      console.log('  verify    current state: counts, bytes, what is left');
+      console.log('  failures  what went wrong, grouped by cause, and what to re-run');
+      console.log('Options: --limit N, --where "SOQL condition", --all-versions, --concurrency N,');
+      console.log('         --stream (no local disk; gives up per-file resume), --force');
+      console.log('         --version, --help');
+      process.exit(command ? 1 : 0);
   }
 }
 

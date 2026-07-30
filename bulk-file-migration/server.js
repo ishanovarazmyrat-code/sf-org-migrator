@@ -459,6 +459,10 @@ function runCommand(req, res, url) {
 
   const args = [CLI, cmd];
   if (url.searchParams.get('allVersions') === '1' && cmd === 'run') args.push('--all-versions');
+  // --stream applies to any phase that moves file binaries.
+  if (url.searchParams.get('stream') === '1' && ['run', 'migrate', 'upload'].includes(cmd)) {
+    args.push('--stream');
+  }
   // Run in the user's working directory so work/, .auth/, config resolve there.
   const child = spawn('node', args, { cwd: process.cwd() });
   child.stdout.on('data', (d) => d.toString().split('\n').forEach((l) => l && send('log', l)));

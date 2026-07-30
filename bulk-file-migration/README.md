@@ -5,19 +5,31 @@ disk and upload via multipart (up to **2 GB/file**). Records upsert on a
 `Legacy_*_Id__c` external Id with lookup/master-detail remapping. Everything
 is resumable.
 
-Authentication uses the **Salesforce CLI** — no passwords stored. (A
-username/password `.env` still works as a fallback.)
+Authentication is the tool's own **OAuth device flow** — no passwords, and no
+Salesforce CLI needed, so it works on a headless VM. CLI aliases, an auth URL,
+and a username/password `.env` remain as fallbacks.
 
 ## Quick start
 
 ```bash
-npm install
-node cli.js init        # pick source + target CLI orgs (writes migration.config.json)
-node cli.js doctor      # preflight: what's ready, what's missing
-node cli.js migrate     # records + files, end to end
+npm install -g sf-org-migrator
 ```
 
-Prefer buttons? `npm run ui` → http://localhost:4599
+State (`work/`, `.auth/`, config) lives in the directory you run from, like
+git — so make one for each migration:
+
+```bash
+mkdir my-migration && cd my-migration
+sf-org-migrator login source   # prints a URL + code to approve in a browser
+sf-org-migrator login target
+sf-org-migrator doctor         # preflight: what's ready, what's missing
+sf-org-migrator migrate        # records + files, end to end
+```
+
+Prefer buttons? `sf-org-migrator ui` → http://localhost:4599
+
+Working from a clone instead? Run `npm install` in `bulk-file-migration/` and
+use `node cli.js …` in place of `sf-org-migrator …`.
 
 ## Commands
 
@@ -34,7 +46,7 @@ Prefer buttons? `npm run ui` → http://localhost:4599
 | `manifest` / `download` / `upload` / `link` | Individual file phases (for control / retries). |
 
 Options: `--limit N`, `--where "SOQL"`, `--all-versions`, `--concurrency N`, `--force`,
-`--stream`.
+`--stream`. Also `--version` and `--help`.
 
 ### `--stream`: skip the local disk
 
@@ -51,9 +63,16 @@ The trade is resumability. There is no half-finished file on disk to resume
 from, so an interrupted transfer restarts that file from the beginning. Use it
 when disk is the constraint; leave it off for long runs over shaky links.
 
+It also saves a hop. Measured org-to-org on a 1GB file, from a VM in the same
+region as the orgs: **136s streaming vs 329s from a laptop two countries away**
+— the machine you run on, and how it reaches the orgs, matters more than
+anything the tool does.
+
+The web UI has the same option as a checkbox on the Files card.
+
 ## Configuration
 
-`node cli.js init` writes `migration.config.json`:
+`sf-org-migrator init` writes `migration.config.json`:
 ```json
 { "sourceOrg": "sourceOrg", "targetOrg": "targetOrg" }
 ```
@@ -83,11 +102,11 @@ whose action is **Block** still block. Set `"allowDuplicates": false` in
 
 ## Auth options
 
-- **OAuth device flow (recommended):** `node cli.js login`. One-time Connected
-  App, then authorize both orgs in a browser (works on a VM too — enter a code
+- **OAuth device flow (recommended):** `sf-org-migrator login source` /
+  `login target`. One-time External Client App per org, then authorize both orgs in a browser (works on a VM too — enter a code
   on your own browser). No CLI, no passwords; refresh tokens stored in `.auth/`
   (gitignored). Setup: `../docs/OAUTH_SETUP.md`.
-- **CLI aliases:** `node cli.js init` picks two Salesforce CLI orgs. Simplest on
+- **CLI aliases:** `sf-org-migrator init` picks two Salesforce CLI orgs. Simplest on
   your own machine, but recent CLI versions mask the token (see next option).
 - **Auth URL (headless / newer CLI):** set `SOURCE_AUTH_URL` / `TARGET_AUTH_URL`
   to each org's `sfdxAuthUrl` (`force://…`).
