@@ -16,3 +16,4 @@
 .vscode/
 **/.vscode/
 .claude/worktrees/
+sfdx-package/.sf/

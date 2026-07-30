@@ -38,6 +38,10 @@ public with sharing class ContactSyncScheduler implements Schedulable {
             settings = new Migration_Sync_State__c();
         }
         settings.Contact_Last_Sync__c = newTime;
+        // Custom settings hold this app's own bookkeeping (a sync watermark), not
+        // customer data, and getOrgDefaults() already reads them outside the
+        // sharing model. User-mode DML here would break the scheduler for anyone
+        // without edit on the setting, so it stays in system mode deliberately.
         upsert settings;
     }
 }

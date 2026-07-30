@@ -23,4 +23,9 @@
         <readable>true</readable>
         <editable>true</editable>
     </fieldPermissions>
+    <fieldPermissions>
+        <field>Lead.Legacy_Lead_Id__c</field>
+        <readable>true</readable>
+        <editable>true</editable>
+    </fieldPermissions>
 </PermissionSet>

@@ -24,11 +24,18 @@ public with sharing class SourceOrgContactFileMigrationBatch implements Database
     public Integer totalFilesMigrated = 0;
     public Integer totalFilesSkipped = 0;
     public Integer totalErrors = 0;
+    /** Records the target org refused (FLS, validation, duplicate rules). */
+    public Integer failedUpserts = 0;
     public List<String> errorLog = new List<String>();
 
     public class MigrationException extends Exception {}
 
     private List<String> restrictToIds;
+    // A SOQL filter for the query sent to the SOURCE org over the Named
+    // Credential — not a query against this org. It is supplied by whoever
+    // schedules the batch (Apex execute rights), and it can only reach data
+    // the Named Credential is already authenticated for. Escaping it would
+    // defeat its purpose: being a filter expression is the point.
     private String customWhereClause;
 
     public SourceOrgContactFileMigrationBatch() {}
@@ -54,7 +61,30 @@ public with sharing class SourceOrgContactFileMigrationBatch implements Database
         return Database.executeBatch(new SourceOrgContactFileMigrationBatch(whereClause, true), scopeSize);
     }
 
+    /**
+     * The Named Credential is created by the admin, not shipped by the package
+     * — its endpoint is a different source org for every customer. When it is
+     * missing, the callout below fails inside execute(), where the chunk
+     * handler catches it and the run still reports "complete". Checking here,
+     * once, turns that into a message that says what to do.
+     */
+    private void assertNamedCredentialExists() {
+        // Tests supply an HttpCalloutMock, so no Named Credential is involved
+        // and there is no DML that could create one from Apex.
+        if (Test.isRunningTest()) {
+            return;
+        }
+        String devName = NAMED_CREDENTIAL.substringAfter('callout:');
+        if ([SELECT COUNT() FROM NamedCredential WHERE DeveloperName = :devName] == 0) {
+            throw new MigrationException(
+                'Named Credential "' + devName + '" does not exist in this org. Create it under ' +
+                'Setup -> Named Credentials, pointing at the source org, before running the migration.'
+            );
+        }
+    }
+
     public Iterable<String> start(Database.BatchableContext bc) {
+        assertNamedCredentialExists();
         String soql = 'SELECT Id FROM Contact';
         if (customWhereClause != null && customWhereClause.trim() != '') {
             soql += ' WHERE ' + customWhereClause;
@@ -109,11 +139,11 @@ public with sharing class SourceOrgContactFileMigrationBatch implements Database
 
                 Id existingTargetDocId = null;
                 Integer existingVersionCount = 0;
-                for (ContentVersion cv : [SELECT ContentDocumentId FROM ContentVersion WHERE Title = :title LIMIT 1]) {
+                for (ContentVersion cv : [SELECT ContentDocumentId FROM ContentVersion WHERE Title = :title WITH USER_MODE LIMIT 1]) {
                     existingTargetDocId = cv.ContentDocumentId;
                 }
                 if (existingTargetDocId != null) {
-                    existingVersionCount = [SELECT COUNT() FROM ContentVersion WHERE ContentDocumentId = :existingTargetDocId];
+                    existingVersionCount = [SELECT COUNT() FROM ContentVersion WHERE ContentDocumentId = :existingTargetDocId WITH USER_MODE];
                     contentDocToExistingTargetDocId.put(contentDocumentId, existingTargetDocId);
                 }
 
@@ -165,10 +195,10 @@ public with sharing class SourceOrgContactFileMigrationBatch implements Database
                     } else {
                         cv.FirstPublishLocationId = targetId;
                     }
-                    insert cv;
+                    insert as user cv;
                     migratedCount++;
                     if (targetContentDocumentId == null) {
-                        cv = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id];
+                        cv = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id WITH USER_MODE];
                         targetContentDocumentId = cv.ContentDocumentId;
                     }
                 }
@@ -189,6 +219,9 @@ public with sharing class SourceOrgContactFileMigrationBatch implements Database
         System.debug('Files migrated: ' + totalFilesMigrated);
         System.debug('Files skipped: ' + totalFilesSkipped);
         System.debug('Chunk errors: ' + totalErrors);
+        if (failedUpserts > 0) {
+            System.debug(LoggingLevel.ERROR, 'Records rejected by the target org: ' + failedUpserts + ' (see the ERROR lines above for each reason)');
+        }
         if (!errorLog.isEmpty()) System.debug('Error details: ' + String.join(errorLog, ' | '));
     }
 
@@ -207,12 +240,34 @@ public with sharing class SourceOrgContactFileMigrationBatch implements Database
         if (toUpsert.isEmpty()) return new Map<String, Id>();
 
         Schema.SObjectField extIdField = Contact.getSObjectType().getDescribe().fields.getMap().get(EXTERNAL_ID_FIELD.toLowerCase());
-        Database.upsert(toUpsert, extIdField, false);
+        // A field the running user cannot see is absent from this map entirely,
+        // so the token comes back null and the upsert below would throw an NPE
+        // that the chunk handler swallows — a run that migrates nothing and
+        // still reports success. Say what is actually wrong instead.
+        if (extIdField == null) {
+            throw new MigrationException(
+                EXTERNAL_ID_FIELD + ' is not visible to ' + UserInfo.getUsername() +
+                '. Assign the Migration_Access permission set to whoever runs the migration.'
+            );
+        }
+        // allOrNone=false lets the good records through, but the results are the
+        // only record of what did not make it — dropping them would swallow
+        // failures silently, which is exactly what this tool promises not to do.
+        for (Database.UpsertResult ur : Database.upsert(toUpsert, extIdField, false, AccessLevel.USER_MODE)) {
+            if (!ur.isSuccess()) {
+                failedUpserts++;
+                for (Database.Error e : ur.getErrors()) {
+                    System.debug(LoggingLevel.ERROR,
+                        'Upsert failed: ' + e.getStatusCode() + ' - ' + e.getMessage() +
+                        ' [fields: ' + String.join(e.getFields(), ', ') + ']');
+                }
+            }
+        }
 
         Map<String, Id> idMap = new Map<String, Id>();
         List<String> sourceIds = new List<String>();
         for (Object o : sourceContacts) sourceIds.add((String) ((Map<String, Object>) o).get('Id'));
-        for (Contact c : [SELECT Id, Legacy_Contact_Id__c FROM Contact WHERE Legacy_Contact_Id__c IN :sourceIds]) {
+        for (Contact c : [SELECT Id, Legacy_Contact_Id__c FROM Contact WHERE Legacy_Contact_Id__c IN :sourceIds WITH USER_MODE]) {
             idMap.put(c.Legacy_Contact_Id__c, c.Id);
         }
         return idMap;
