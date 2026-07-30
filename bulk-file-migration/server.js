@@ -39,7 +39,7 @@ const sessions = new Set(); // valid session ids (in-memory; cleared on restart)
 const pendingLogins = {};   // prefix -> in-progress device-flow login state
 
 // Only these commands can be triggered from the UI (no destructive/interactive ones).
-const ALLOWED = new Set(['stats', 'records', 'run', 'verify']);
+const ALLOWED = new Set(['stats', 'records', 'run', 'verify', 'download', 'upload', 'link', 'failures']);
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
 
@@ -179,6 +179,22 @@ function readBody(req) {
 /* ------------------------------------------------------------------ */
 /* /api/status - are both orgs reachable?                              */
 /* ------------------------------------------------------------------ */
+/**
+ * The failure reports, grouped by cause and split into what a re-run can fix
+ * and what needs the user first. Same data the `failures` command prints.
+ */
+async function apiFailures(res) {
+  const workDir = process.env.WORK_DIR || require('path').join(process.cwd(), 'work');
+  const failures = require('./lib/failures');
+  const groups = failures.summarize(workDir);
+  return sendJson(res, 200, {
+    total: groups.reduce((n, g) => n + g.count, 0),
+    retryable: groups.filter((g) => g.retryable),
+    blocked: groups.filter((g) => !g.retryable),
+    commands: failures.retryCommands(groups.filter((g) => g.retryable)),
+  });
+}
+
 async function apiStatus(res) {
   const sf = require('./lib/sf');
   const probe = async (which) => {
@@ -515,6 +531,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(PAGE);
     }
     if (url.pathname === '/api/status') return await apiStatus(res);
+    if (url.pathname === '/api/failures') return await apiFailures(res);
     if (url.pathname === '/api/objects') return await apiObjects(res);
     if (url.pathname === '/api/all-objects') return await apiAllObjects(res);
     if (url.pathname === '/api/object') return await apiObject(res, url);

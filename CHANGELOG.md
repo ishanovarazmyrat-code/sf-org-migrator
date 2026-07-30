@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- **`failures`: what went wrong, grouped by cause, and what to do about it.**
+  The reports under `work/errors/` list every failed row, which is right for
+  auditing and useless for deciding — a 400-row CSV usually has two or three
+  distinct causes. The command groups them and splits them into *worth
+  retrying* (transient, or a parent that only needs migrating first) and
+  *needs a fix first* (validation, permissions, a Block duplicate rule), then
+  prints the phases to re-run in dependency order. The web UI shows the same
+  panel with a one-click retry.
+- `DUPLICATES_DETECTED` is now treated as deterministic. Since 1.8.0 an
+  "Allow" duplicate rule no longer blocks the tool, so one that still gets
+  through is a **Block** rule — which rejects the same record every time.
+  Retrying it was pure backoff.
+
 ## [1.10.0] — 2026-07-30
 
 - **`--stream`: migrate files without the local disk round trip.** Each binary

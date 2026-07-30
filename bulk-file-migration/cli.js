@@ -565,6 +565,43 @@ async function cmdLink() {
 /* ------------------------------------------------------------------ */
 /* verify                                                             */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* failures - what went wrong, grouped by cause, and what to do next  */
+/* ------------------------------------------------------------------ */
+function cmdFailures() {
+  const failures = require('./lib/failures');
+  const groups = failures.summarize(WORK_DIR);
+  if (!groups.length) {
+    console.log('\nNo failures reported. (Reports live in work/errors/.)');
+    return;
+  }
+
+  const total = groups.reduce((n, g) => n + g.count, 0);
+  console.log(`\n=== FAILURES: ${total} across ${groups.length} cause(s) ===`);
+
+  const retry = groups.filter((g) => g.retryable);
+  const fix = groups.filter((g) => !g.retryable);
+
+  const show = (g) => {
+    console.log(`\n  [${g.phase}${g.object ? ` / ${g.object}` : ''}] ${g.count}x`);
+    console.log(`    ${g.reason}`);
+    console.log(`    -> ${g.why}`);
+    if (g.samples.length) console.log(`    e.g. ${g.samples.join(', ')}`);
+  };
+
+  if (retry.length) {
+    console.log('\n--- Worth retrying ---');
+    retry.forEach(show);
+    const cmds = failures.retryCommands(retry);
+    if (cmds.length) console.log(`\n  Re-run:  ${cmds.map((c) => `node cli.js ${c}`).join('  &&  ')}`);
+  }
+  if (fix.length) {
+    console.log('\n--- Needs a fix first ---');
+    fix.forEach(show);
+    console.log('\n  Retrying these changes nothing until the cause is addressed.');
+  }
+}
+
 function cmdVerify() {
   const manifest = mf.load(WORK_DIR);
   if (!manifest) throw new Error('No manifest - run "node cli.js manifest" first.');
@@ -864,6 +901,8 @@ async function main() {
       return cmdLink();
     case 'verify':
       return cmdVerify();
+    case 'failures':
+      return cmdFailures();
     case 'run':
       if (!mf.load(WORK_DIR)) await cmdManifest(opts);
       if (!opts.stream) await cmdDownload(opts);

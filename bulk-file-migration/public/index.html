@@ -191,6 +191,17 @@
   .empty p { font-size: 13.5px; margin: 4px 0; }
 
   /* ---------- collapsible log ---------- */
+  /* failures panel */
+  .failsum { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+  .failsec { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 8px; }
+  .failsec.ok { color: #38a169; } .failsec.warn { color: #d69e2e; }
+  .failrow { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+  .failhead { font-size: 13px; margin-bottom: 4px; }
+  .failreason { font-size: 13px; line-height: 1.45; word-break: break-word; }
+  .failwhy { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .failids { font-size: 11.5px; color: var(--muted); margin-top: 4px; font-family: ui-monospace, monospace; }
+  .failact { margin-top: 12px; }
+  .failnote { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
   .logwrap { margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
   .logtoggle { width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 15px; background: var(--card-2); border: 0; cursor: pointer; font-size: 12.5px; color: var(--muted); font-weight: 600; }
   .logtoggle .ch { transition: .2s; } .logtoggle.open .ch { transform: rotate(90deg); }
@@ -344,6 +355,14 @@
         <button class="btn primary" id="runAll">▶ Run full migration</button>
         <span class="hint">Records → Files → Verify, one after another.</span>
       </div>
+    </div>
+
+    <div class="card hidden" id="failuresCard">
+      <div class="result-head">
+        <h3>What failed, and what to do</h3>
+        <button class="btn ghost sm" id="failRefresh">Refresh</button>
+      </div>
+      <div id="failuresBody"></div>
     </div>
 
     <div class="card">
@@ -661,6 +680,7 @@ function run(cmd) {
     else if (hadFailure) toast('warn', PHASE_LABELS[cmd] + ' finished with issues', 'Some records/files did not go through.');
     else toast('ok', PHASE_LABELS[cmd] + ' complete', 'Finished in ' + fmtTime(Math.round((Date.now() - startTs) / 1000)) + '.');
     if (ok && cmd === 'verify') markStep('run');
+    loadFailures(); // a phase just wrote (or cleared) its report
     es.close(); es = null;
     if (ok && queue.length) { setTimeout(() => run(queue.shift()), 500); return; } // chain the full run
     queue = [];
@@ -668,6 +688,47 @@ function run(cmd) {
   });
   es.onerror = () => { clearInterval(timerInt); queue = []; $$('.phaseBtn').forEach((b) => (b.disabled = false)); $('#runAll').disabled = false; setChip(cmd, 'failed', 'Failed'); toast('err', 'Connection lost', 'The run stream was interrupted.'); if (es) { es.close(); es = null; } };
 }
+
+/* ---------- failures: grouped by cause, split by what a re-run can fix ---------- */
+function failGroup(g) {
+  return '<div class="failrow">' +
+    '<div class="failhead"><b>' + g.count + '&times;</b> ' + escapeHtml(g.phase) +
+      (g.object ? ' / ' + escapeHtml(g.object) : '') + '</div>' +
+    '<div class="failreason">' + escapeHtml(g.reason) + '</div>' +
+    '<div class="failwhy">' + escapeHtml(g.why) + '</div>' +
+    (g.samples && g.samples.length ? '<div class="failids">e.g. ' + g.samples.map(escapeHtml).join(', ') + '</div>' : '') +
+    '</div>';
+}
+
+async function loadFailures() {
+  let d;
+  try { d = await (await fetch('/api/failures')).json(); } catch (_) { return; }
+  const card = $('#failuresCard');
+  if (!d || !d.total) { card.classList.add('hidden'); return; }
+
+  let html = '<p class="failsum">' + d.total + ' failure(s) across ' +
+    (d.retryable.length + d.blocked.length) + ' cause(s).</p>';
+
+  if (d.retryable.length) {
+    html += '<h4 class="failsec ok">Worth retrying</h4>' + d.retryable.map(failGroup).join('');
+    if (d.commands.length) {
+      html += '<div class="failact"><button class="btn primary sm" id="failRetry">↻ Retry: ' +
+        d.commands.join(' → ') + '</button></div>';
+    }
+  }
+  if (d.blocked.length) {
+    html += '<h4 class="failsec warn">Needs a fix first</h4>' + d.blocked.map(failGroup).join('') +
+      '<p class="failnote">Re-running these changes nothing until the cause is addressed.</p>';
+  }
+  $('#failuresBody').innerHTML = html;
+  card.classList.remove('hidden');
+
+  const btn = $('#failRetry');
+  if (btn) btn.addEventListener('click', () => { queue = d.commands.slice(1); run(d.commands[0]); });
+}
+
+$('#failRefresh').addEventListener('click', loadFailures);
+loadFailures();
 
 /* ---------- result parsing → friendly tiles ---------- */
 function tile(k, v, extra, cls, small) {

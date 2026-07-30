@@ -30,6 +30,7 @@ Prefer buttons? `npm run ui` → http://localhost:4599
 | `migrate` | `records` then `run`, end to end. |
 | `stats` | Read-only: source file count + total size. |
 | `verify` | Show current state and any failures. |
+| `failures` | Group the failure reports by cause and say which are worth retrying. |
 | `manifest` / `download` / `upload` / `link` | Individual file phases (for control / retries). |
 
 Options: `--limit N`, `--where "SOQL"`, `--all-versions`, `--concurrency N`, `--force`,
@@ -104,6 +105,12 @@ The tool tries them in this order: `.auth/` (OAuth) → `*_AUTH_URL` → CLI ali
   that fail (or are skipped because a parent isn't there yet) are written to a
   CSV under `work/errors/` with the source Id and reason. Fix the cause and
   re-run — records upsert is idempotent, files resume from the manifest.
+- **`failures` turns those reports into a decision.** A 400-row CSV usually has
+  two or three distinct causes; the command groups them and marks each one
+  *worth retrying* (transient, or a parent that just needs migrating first) or
+  *needs a fix first* (validation, permissions, a Block duplicate rule), then
+  prints the phases to re-run in the right order. The web UI shows the same
+  thing with a one-click retry.
 - Deterministic errors (bad field, validation, permissions) fail fast; only
   transient errors (network, rate limit, server 5xx, session expiry) are retried.
 - **Target org File Storage must be ≥ your file volume** (Setup → Storage
