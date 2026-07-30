@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.10.0] — 2026-07-30
+
+- **`--stream`: migrate files without the local disk round trip.** Each binary
+  goes straight from the source org to the target in one hop, so a run no
+  longer needs free disk equal to the data volume. The trade is resumability —
+  there is no half-finished file to resume from, so an interrupted transfer
+  restarts that file. The disk path stays the default. Validated org-to-org on
+  a 1GB file: 5m29s, 8KB of local disk used, SHA-256 identical end to end.
+- **HTTP errors now carry their status code**, so a deterministic failure (a
+  404 for a version that isn't there) fails fast instead of spending three
+  rounds of backoff on it. Affects the existing disk path too.
+- The transfer helpers pick http or https from the URL rather than hardcoding
+  https, which is what makes these paths testable against a local server.
+- `npm test` now runs 44 unit tests, including the full source → target stream.
+
 ## [1.9.0] — 2026-07-30
 
 - **File sharing is preserved.** `ContentDocumentLink.ShareType` and
