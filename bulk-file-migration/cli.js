@@ -316,13 +316,13 @@ async function cmdDownload(opts) {
 
   mf.save(WORK_DIR, manifest);
   console.log(`\n  Downloaded: ${done}, failed: ${failed}. Re-run this command to retry failures.`);
-  if (failed > 0) {
-    const rows = [];
-    for (const doc of Object.values(manifest.docs))
-      for (const v of doc.versions)
-        if (v.state === 'failed') rows.push({ phase: 'download', object: 'ContentVersion', sourceId: v.id, reason: v.error });
-    reportFailures('download', rows);
-  }
+  // Written even when clean: readers treat the newest report per phase as the
+  // current state, so a successful re-run has to supersede the last bad one.
+  const rows = [];
+  for (const doc of Object.values(manifest.docs))
+    for (const v of doc.versions)
+      if (v.state === 'failed') rows.push({ phase: 'download', object: 'ContentVersion', sourceId: v.id, reason: v.error });
+  reportFailures('download', rows);
 }
 
 /* ------------------------------------------------------------------ */
@@ -401,14 +401,12 @@ async function cmdUpload(opts) {
 
   mf.save(WORK_DIR, manifest);
   console.log(`\n  Uploaded: ${uploaded}, failed: ${failed}. Re-run this command to retry failures.`);
-  if (failed > 0) {
-    const rows = [];
-    for (const [docId, doc] of Object.entries(manifest.docs))
-      for (const v of doc.versions)
-        if (v.state === 'failed' || (v.error && v.state !== 'uploaded'))
-          rows.push({ phase: 'upload', object: 'ContentVersion', sourceId: v.id, targetId: docId, reason: v.error });
-    reportFailures('upload', rows);
-  }
+  const rows = [];
+  for (const [docId, doc] of Object.entries(manifest.docs))
+    for (const v of doc.versions)
+      if (v.state === 'failed' || (v.error && v.state !== 'uploaded'))
+        rows.push({ phase: 'upload', object: 'ContentVersion', sourceId: v.id, targetId: docId, reason: v.error });
+  reportFailures('upload', rows);
 }
 
 /* ------------------------------------------------------------------ */
@@ -551,15 +549,13 @@ async function cmdLink() {
     console.log('  "Unmapped" = the parent record was not found in the target org via its');
     console.log('  Legacy_*_Id__c field - migrate those records first, then re-run link.');
   }
-  if (failed > 0 || unmapped > 0) {
-    const rows = [];
-    for (const [docId, doc] of Object.entries(manifest.docs))
-      for (const l of doc.links) {
-        if (l.state === 'failed') rows.push({ phase: 'link', object: 'ContentDocumentLink', sourceId: l.src, targetId: doc.targetDocId, reason: l.error });
-        else if (l.state === 'unmapped') rows.push({ phase: 'link', object: 'ContentDocumentLink', sourceId: l.src, targetId: doc.targetDocId, reason: 'parent record not found in target via Legacy_*_Id__c' });
-      }
-    reportFailures('link', rows);
-  }
+  const rows = [];
+  for (const [docId, doc] of Object.entries(manifest.docs))
+    for (const l of doc.links) {
+      if (l.state === 'failed') rows.push({ phase: 'link', object: 'ContentDocumentLink', sourceId: l.src, targetId: doc.targetDocId, reason: l.error });
+      else if (l.state === 'unmapped') rows.push({ phase: 'link', object: 'ContentDocumentLink', sourceId: l.src, targetId: doc.targetDocId, reason: 'parent record not found in target via Legacy_*_Id__c' });
+    }
+  reportFailures('link', rows);
 }
 
 /* ------------------------------------------------------------------ */

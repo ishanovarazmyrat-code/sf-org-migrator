@@ -85,3 +85,24 @@ test('retryCommands orders phases so records exist before links point at them', 
 test('classify treats a network wobble as worth retrying', () => {
   assert.equal(classify('socket hang up').retryable, true);
 });
+
+test('a clean re-run supersedes the previous failure report instead of leaving it current', () => {
+  const { writeReport } = require('../lib/report');
+  const dir = workDirWith({});
+
+  // First run fails...
+  writeReport(dir, 'records', [{ phase: 'records', object: 'Contact', sourceId: '003x', reason: 'boom' }]);
+  assert.equal(summarize(dir).length, 1);
+
+  // ...the cause is fixed and the phase re-runs clean. Nothing to report, but
+  // the report still has to say so, or the old failures look current forever.
+  writeReport(dir, 'records', []);
+  assert.deepEqual(summarize(dir), []);
+});
+
+test('writeReport returns a path only when there was something to report', () => {
+  const { writeReport } = require('../lib/report');
+  const dir = workDirWith({});
+  assert.equal(writeReport(dir, 'link', []), null, 'a clean run stays quiet in the console');
+  assert.match(writeReport(dir, 'link', [{ reason: 'x' }]), /link-.*\.csv$/);
+});

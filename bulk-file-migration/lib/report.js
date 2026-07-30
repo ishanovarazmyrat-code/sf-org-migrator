@@ -16,20 +16,24 @@ function csvCell(v) {
 }
 
 /**
- * Writes rows to work/errors/<phase>-<ts>.csv. Returns the file path, or null
- * when there is nothing to report (so callers can stay quiet on a clean run).
+ * Writes rows to work/errors/<phase>-<ts>.csv and returns the file path — or
+ * null when the run was clean, so callers can stay quiet.
+ *
+ * A clean run still writes a header-only file. Readers take the newest report
+ * per phase as the current state, so skipping the write entirely would leave
+ * yesterday's failures looking current after you fixed them and re-ran.
+ *
  * `rows` are plain objects keyed by any of COLUMNS; missing keys are blank.
  */
 function writeReport(workDir, phase, rows) {
-  if (!rows || rows.length === 0) return null;
   const dir = path.join(workDir, 'errors');
   fs.mkdirSync(dir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const file = path.join(dir, `${phase}-${ts}.csv`);
   const lines = [COLUMNS.join(',')];
-  for (const r of rows) lines.push(COLUMNS.map((c) => csvCell(r[c])).join(','));
+  for (const r of rows || []) lines.push(COLUMNS.map((c) => csvCell(r[c])).join(','));
   fs.writeFileSync(file, lines.join('\n') + '\n');
-  return file;
+  return rows && rows.length ? file : null;
 }
 
 module.exports = { writeReport, COLUMNS };
