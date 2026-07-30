@@ -244,19 +244,69 @@
     <h3 style="font-size:16px;margin:0 0 6px;">1 · Install the package in your target org</h3>
     <p class="install-note">One click adds the fields, classes, custom setting and permission set the migration needs:<br>
       <a href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tJ6000000pGxpIAE">Install into a Salesforce org →</a>
-      &nbsp;then choose <em>Install for All Users</em>.</p>
+      &nbsp;then choose <em>Install for All Users</em>.
+      For a sandbox, replace <code>login</code> with <code>test</code> in that URL.</p>
+    <p class="install-note"><b>Then assign yourself the permission set.</b>
+      Setup → Permission Sets → <em>Migration Access</em> → Manage Assignments.
+      A newly installed field is invisible without it, and the migration will stop
+      and say so rather than move nothing.</p>
 
-    <h3 style="font-size:16px;margin:0 0 6px;">2 · Run the tool</h3>
+    <h3 style="font-size:16px;margin:0 0 6px;">2 · Create an External Client App in each org</h3>
+    <p class="install-note">Once per org, so the tool can sign in without storing a password.
+      Setup → App Manager → <em>New External Client App</em>:</p>
+    <ul class="install-note" style="margin:0 0 10px 18px;padding:0;">
+      <li>Callback URL <code>https://login.salesforce.com/services/oauth2/success</code>
+        (<code>test</code> instead of <code>login</code> for a sandbox)</li>
+      <li>Scopes: <em>Manage user data via APIs (api)</em> and
+        <em>Perform requests at any time (refresh_token, offline_access)</em></li>
+      <li>Then open the app → Settings → OAuth Settings → Edit →
+        <b>Enable Device Flow</b> ✓ — easy to miss, and nothing works without it</li>
+    </ul>
+    <p class="install-note">Copy the <b>Consumer Key</b> from each org; step 3 asks for it.
+      New apps take a few minutes to activate — if login says
+      <em>invalid device code</em> straight away, wait and retry.
+      Full walkthrough: <a href="https://github.com/ishanovarazmyrat-code/sf-org-migrator/blob/main/docs/OAUTH_SETUP.md">OAUTH_SETUP.md</a>.</p>
+
+    <h3 style="font-size:16px;margin:0 0 6px;">3 · Run the tool</h3>
     <div class="codeblock">
       <button class="copy" data-copy>Copy</button>
-      <pre><span class="cmt"># install once, then run from any folder</span>
+      <pre><span class="cmt"># needs Node.js 22 or newer</span>
 npm install -g sf-org-migrator
 
-sf-org-migrator login source   <span class="cmt"># authorize each org (OAuth, no password)</span>
-sf-org-migrator login target
+<span class="cmt"># state lives where you run it, like git — one folder per migration</span>
+mkdir my-migration &amp;&amp; cd my-migration
+
+sf-org-migrator login source   <span class="cmt"># paste that org's Consumer Key, then</span>
+sf-org-migrator login target   <span class="cmt"># approve the code in a browser</span>
 sf-org-migrator doctor         <span class="cmt"># preflight: what's ready, what's missing</span>
+
+<span class="cmt"># try a handful of files first</span>
+sf-org-migrator manifest --limit 3
+sf-org-migrator migrate
+
+<span class="cmt"># then the real thing</span>
+sf-org-migrator manifest --force
 sf-org-migrator migrate        <span class="cmt"># records + files, end to end</span></pre>
     </div>
+
+    <p class="install-note">Each <code>login</code> prints a URL and a code — open it in a browser
+      signed into <em>that</em> org. Use an incognito window for the second one, or you will
+      authorize the first org twice.</p>
+
+    <h3 style="font-size:16px;margin:14px 0 6px;">4 · When something goes wrong</h3>
+    <div class="codeblock">
+      <button class="copy" data-copy>Copy</button>
+      <pre>sf-org-migrator verify     <span class="cmt"># where the run got to</span>
+sf-org-migrator failures   <span class="cmt"># what broke, grouped by cause</span></pre>
+    </div>
+    <p class="install-note"><code>failures</code> splits problems into <em>worth retrying</em> and
+      <em>needs a fix first</em>, and prints the phases to re-run in the right order. Every
+      rejected record also lands in a CSV under <code>work/errors/</code> with its reason.
+      Every phase is resumable — run the same command again and it continues.</p>
+
+    <p class="install-note"><b>Short on disk?</b> Add <code>--stream</code> and each file goes
+      straight from one org to the other without touching disk. The trade is that an
+      interrupted transfer restarts that file instead of resuming it.</p>
 
     <p class="install-note">Prefer buttons over the terminal? Start the local web UI — setup, object and field selection, and a live progress view:</p>
     <div class="codeblock">
