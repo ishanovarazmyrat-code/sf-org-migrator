@@ -3,8 +3,20 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.11.0] — 2026-07-30
 
+- **Create-only fields are no longer copied — a re-run used to fail where the
+  first run succeeded.** Records go in by upsert, so Salesforce picks insert or
+  update per record. A field that describes as createable but not updateable
+  (`Lead.IsConverted`, `Opportunity.ContactId`) lands fine while the records
+  are new, then fails every one of them once they exist. The field plan
+  required *createable or updateable*; for an upsert it has to be both. This
+  broke the tool's core promise that a run can be repeated.
+- **Parent lookups are checked for writability like every other field.** They
+  bypassed the field plan entirely, so a read-only lookup went straight into
+  the upsert — `Lead.ConvertedAccountId` and friends are set by lead
+  conversion and rejected on insert, failing all six Leads in testing. Such a
+  lookup is now dropped with a warning saying why.
 - **`failures`: what went wrong, grouped by cause, and what to do about it.**
   The reports under `work/errors/` list every failed row, which is right for
   auditing and useless for deciding — a 400-row CSV usually has two or three
@@ -17,6 +29,14 @@ All notable changes to this project are documented here. This project follows
   "Allow" duplicate rule no longer blocks the tool, so one that still gets
   through is a **Block** rule — which rejects the same record every time.
   Retrying it was pure backoff.
+- Failure reports are written even when a phase runs clean, so a fixed cause
+  stops being reported as current. Readers take the newest report per phase as
+  the state; skipping the write left yesterday's failures looking live.
+- The UI no longer locks up when a retry runs a file phase. `download`,
+  `upload` and `link` have no card of their own — they share the Files card —
+  and looking up the missing element threw right after the buttons were
+  disabled, leaving no way forward but a page reload.
+- `npm test` now runs 63 unit tests.
 
 ## [1.10.0] — 2026-07-30
 
