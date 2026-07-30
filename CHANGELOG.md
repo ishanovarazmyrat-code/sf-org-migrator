@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [1.12.1] — 2026-07-31
+
+- The web UI's "Connect an org" panel starts collapsed once both orgs are
+  connected. It holds the Consumer Key in plain text, so leaving it open put a
+  credential on screen in every screenshot and screen recording. It still
+  opens by default when an org is missing, and stays wherever you put it once
+  you touch it.
+
 ## [1.12.0] — 2026-07-30
 
 - **`--stream` is available in the web UI** — a checkbox on the Files card.
