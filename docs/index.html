@@ -308,6 +308,34 @@ sf-org-migrator failures   <span class="cmt"># what broke, grouped by cause</spa
       straight from one org to the other without touching disk. The trade is that an
       interrupted transfer restarts that file instead of resuming it.</p>
 
+    <h3 style="font-size:16px;margin:14px 0 6px;">5 · Migrating a custom object</h3>
+    <p class="install-note">The packaged fields cover the standard objects. A custom object
+      needs three things, and the second is the one people miss:</p>
+    <ol class="install-note" style="margin:0 0 10px 18px;padding:0;">
+      <li><b>An external Id field on the target</b> — <code>Legacy_&lt;Object&gt;_Id__c</code>,
+        Text(18), External Id, Unique.</li>
+      <li><b>Field-level access to it.</b> A newly created custom field is invisible to
+        every profile until something grants it — literally invisible: it does not appear
+        in the object's describe, so the tool cannot see it either. Put it in a permission
+        set and assign that to whoever runs the migration. Skip this and the migration
+        stops with a message naming the field.</li>
+      <li><b>Its lookups mapped under <code>parents</code>.</b> A lookup holds a record Id
+        from the <em>source</em> org, which means nothing in the target. Listing it tells the
+        tool what to re-point it at; leave it out and the field is dropped by design.</li>
+    </ol>
+    <div class="codeblock">
+      <button class="copy" data-copy>Copy</button>
+      <pre>{
+  "name": "Shipment__c",
+  "externalId": "Legacy_Shipment_Id__c",
+  "fields": "auto",
+  "parents": { "Account__c": "Account" }
+}</pre>
+    </div>
+    <p class="install-note">Add that to the <code>objects</code> array in
+      <code>migration.config.json</code>, parents before children — the migration processes
+      them in order.</p>
+
     <p class="install-note">Prefer buttons over the terminal? Start the local web UI — setup, object and field selection, and a live progress view:</p>
     <div class="codeblock">
       <button class="copy" data-copy>Copy</button>

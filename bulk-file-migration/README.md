@@ -83,9 +83,41 @@ are matched by DeveloperName; State/Country picklists are sent as ISO codes.
 To override, set an explicit `fields` array per object.
 
 To customize which objects the `records` command migrates, add an `objects`
-array (see `lib/records.js` `DEFAULT_OBJECTS` for the shape). Custom objects
-need a `Legacy_<Object>_Id__c` external Id field on the target and, for
-master-detail children, their parent listed first.
+array (see `lib/records.js` `DEFAULT_OBJECTS` for the shape).
+
+### Adding a custom object
+
+Three steps, and the second one is the one people miss. Validated end to end
+on a `Shipment__c` with a lookup, a picklist and a validation rule.
+
+**1. Create the external Id field on the target.** `Legacy_<Object>_Id__c`,
+Text(18), External Id, Unique. The packaged fields only cover the standard
+objects, so a custom object needs its own.
+
+**2. Grant yourself field-level access to it.** A newly created custom field
+is invisible to every profile until something grants it — and "invisible"
+here is literal: it does not appear in the object's describe at all, so the
+tool cannot see it either. Put it in a permission set (alongside the object's
+other fields) and assign that to whoever runs the migration. Skip this and the
+migration stops with a message naming the field.
+
+**3. Map its lookups in `parents`.** A lookup holds a record Id from the
+*source* org, which means nothing in the target. Listing it under `parents`
+tells the tool which object to re-point it at; leave it out and the field is
+dropped, silently but by design.
+
+```json
+{
+  "name": "Shipment__c",
+  "externalId": "Legacy_Shipment_Id__c",
+  "fields": "auto",
+  "parents": { "Account__c": "Account" }
+}
+```
+
+List parents before children in the `objects` array — the migration processes
+them in order, and a child whose parent has not been migrated yet is skipped
+and reported rather than pointed at nothing.
 
 **Duplicate rules are bypassed by default.** A migration replicates records
 that already exist in the source, so duplicate alerts would fail the insert
