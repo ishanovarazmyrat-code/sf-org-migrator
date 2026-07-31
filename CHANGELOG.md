@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+- **Files attached to a custom object are migrated instead of silently
+  dropped.** The list of parent types whose files get relinked was hardcoded
+  to Account, Contact, Opportunity and Case. A file hanging off anything else
+  — a custom object, or a Lead, which the tool already migrates — was left out
+  of the manifest with a one-line "skipped", counted as no failure and absent
+  from the reports: you would believe those files had moved. The list now comes
+  from the `objects` array in `migration.config.json`, which is already where
+  you declare what you migrate and on which external Id. The skip message also
+  names the objects it did consider, and says how to add one.
+  Verified end to end on a `Shipment__c` with a lookup, a picklist and a
+  validation rule: records and their attached file both land, with the lookup
+  re-pointed at the target's own Account.
+
 ## [1.12.1] — 2026-07-31
 
 - The web UI's "Connect an org" panel starts collapsed once both orgs are

@@ -53,24 +53,45 @@ const WORK_DIR = process.env.WORK_DIR || path.join(process.cwd(), 'work');
 // the target org that maps source record Id -> target record Id. Key
 // prefixes are resolved at runtime (buildPrefixMap) rather than hardcoded,
 // because custom-object key prefixes can differ between orgs.
-const LINK_OBJECTS = [
+const DEFAULT_LINK_OBJECTS = [
   { object: 'Account', externalIdField: 'Legacy_Account_Id__c' },
   { object: 'Contact', externalIdField: 'Legacy_Contact_Id__c' },
   { object: 'Opportunity', externalIdField: 'Legacy_Opportunity_Id__c' },
   { object: 'Case', externalIdField: 'Legacy_Case_Id__c' },
-  // Add custom objects here, e.g.:
-  //   { object: 'Invoice__c', externalIdField: 'Legacy_Invoice_Id__c' },
 ];
 
 /**
+ * The objects whose files we can relink.
+ *
+ * Taken from `migration.config.json` when it lists objects, because that is
+ * already where you say what you are migrating and on which external Id.
+ * Hardcoding the list here meant a file attached to a custom object — or to a
+ * Lead — was dropped from the manifest with a one-line "skipped" and never
+ * migrated, and the only fix was editing this file, which a global npm install
+ * makes unreasonable.
+ */
+function linkObjects() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'migration.config.json'), 'utf8'));
+    const fromConfig = (cfg.objects || [])
+      .filter((o) => o && o.name && o.externalId)
+      .map((o) => ({ object: o.name, externalIdField: o.externalId }));
+    if (fromConfig.length) return fromConfig;
+  } catch (_) {
+    /* no config — fall back to the standard set */
+  }
+  return DEFAULT_LINK_OBJECTS;
+}
+
+/**
  * Builds a { keyPrefix: {object, externalIdField} } map by describing each
- * LINK_OBJECTS entry on the given connection. Uses the SOURCE org because
+ * linkObjects() entry on the given connection. Uses the SOURCE org because
  * ContentDocumentLink.LinkedEntityId values (and thus their prefixes) come
  * from the source org. Objects absent from the org are skipped with a note.
  */
 async function buildPrefixMap(conn) {
   const map = {};
-  for (const entry of LINK_OBJECTS) {
+  for (const entry of linkObjects()) {
     try {
       const meta = await conn.sobject(entry.object).describe();
       if (meta.keyPrefix) map[meta.keyPrefix] = entry;
@@ -262,7 +283,10 @@ async function cmdManifest(opts) {
   console.log(`\n  Manifest written: ${mf.manifestPath(WORK_DIR)}`);
   console.log(`  ${s.docs} document(s), ${Object.values(s.versions).reduce((a, b) => a + b, 0)} version(s), ${mf.fmtBytes(s.bytesTotal)} total.`);
   if (droppedDocs > 0) {
-    console.log(`  Skipped ${droppedDocs} document(s) with no link to Account/Contact/Opportunity/Case.`);
+    const names = linkObjects().map((o) => o.object).join(', ');
+    console.log(`  Skipped ${droppedDocs} document(s) with no link to ${names}.`);
+    console.log('  (A file only migrates if it hangs off a record type being migrated —');
+    console.log('   add that object to "objects" in migration.config.json to include it.)');
   }
 }
 
