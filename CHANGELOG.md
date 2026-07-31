@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.13.0] — 2026-07-31
 
 - **Files attached to a custom object are migrated instead of silently
   dropped.** The list of parent types whose files get relinked was hardcoded
